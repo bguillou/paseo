@@ -457,6 +457,8 @@ export const zhCN: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "Workspace scripts",
+      baseBranchValue: "基础：{{branchName}}",
+      copyBaseBranchName: "复制基础分支名称",
       copyPath: "复制路径",
       copyBranchName: "复制分支名称",
       copied: "已复制",
@@ -1562,6 +1564,17 @@ export const zhCN: TranslationResources = {
     restore: "恢复",
     later: "稍后",
     stashRestored: "Stashed 变更已恢复",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "更改基础分支",
+    currentBase: "基础分支：{{branchName}}。按下以更改基础分支。",
+    readOnlyTooltip: "基础分支：{{branchName}}",
+    placeholder: "更改基础分支...",
+    searchPlaceholder: "筛选分支...",
+    empty: "未找到分支。",
+    title: "更改基础分支",
+    baseChanged: "基础分支已设为 {{branchName}}",
+    failedToChange: "更改基础分支失败",
   },
   agentAutocomplete: {
     searchingWorkspace: "正在搜索 workspace...",

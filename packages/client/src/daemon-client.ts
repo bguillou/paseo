@@ -63,6 +63,7 @@ import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
   CheckoutSwitchBranchResponse,
+  CheckoutSetBaseRefResponse,
   StashSaveResponse,
   StashPopResponse,
   StashListResponse,
@@ -514,6 +515,7 @@ type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
 type CheckoutSwitchBranchPayload = CheckoutSwitchBranchResponse["payload"];
 export type RenameBranchResult = z.infer<typeof CheckoutRenameBranchResponseSchema>["payload"];
+export type SetBaseRefResult = CheckoutSetBaseRefResponse["payload"];
 type StashSavePayload = StashSaveResponse["payload"];
 type StashPopPayload = StashPopResponse["payload"];
 type StashListPayload = StashListResponse["payload"];
@@ -897,6 +899,11 @@ export interface UpdateScheduleOptions {
 export interface RenameBranchInput {
   cwd: string;
   branch: string;
+  requestId?: string;
+}
+export interface SetBaseRefInput {
+  cwd: string;
+  baseRefName: string;
   requestId?: string;
 }
 export interface RenameTerminalInput {
@@ -4438,6 +4445,18 @@ export class DaemonClient {
         branch: input.branch,
       },
       responseType: "checkout.rename_branch.response",
+    });
+  }
+
+  async setCheckoutBaseRef(input: SetBaseRefInput): Promise<SetBaseRefResult> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "checkout.set_base_ref.request",
+        cwd: input.cwd,
+        baseRefName: input.baseRefName,
+      },
+      responseType: "checkout.set_base_ref.response",
     });
   }
 

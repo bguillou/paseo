@@ -463,6 +463,8 @@ export const es: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "GuionesWorkspace",
+      baseBranchValue: "Base: {{branchName}}",
+      copyBaseBranchName: "Copiar nombre de la rama base",
       copyPath: "Copiar ruta",
       copyBranchName: "Copiar nombre de rama",
       copied: "Copiado",
@@ -1625,6 +1627,17 @@ export const es: TranslationResources = {
     restore: "Restaurar",
     later: "Más tarde",
     stashRestored: "Se restauraron los cambios ocultos",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "Cambiar rama base",
+    currentBase: "Rama base: {{branchName}}. Pulsa para cambiar la base.",
+    readOnlyTooltip: "Rama base: {{branchName}}",
+    placeholder: "Cambiar rama base...",
+    searchPlaceholder: "Filtrar ramas...",
+    empty: "No se encontraron ramas.",
+    title: "Cambiar rama base",
+    baseChanged: "Rama base establecida en {{branchName}}",
+    failedToChange: "No se pudo cambiar la rama base",
   },
   agentAutocomplete: {
     searchingWorkspace: "Buscando espacio de trabajo...",

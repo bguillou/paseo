@@ -456,6 +456,8 @@ export const en = {
       scriptsAccessibility: "Workspace scripts",
       copyPath: "Copy path",
       copyBranchName: "Copy branch name",
+      baseBranchValue: "Base: {{branchName}}",
+      copyBaseBranchName: "Copy base branch name",
       copied: "Copied",
     },
     fileActions: {
@@ -1604,6 +1606,17 @@ export const en = {
     restore: "Restore",
     later: "Later",
     stashRestored: "Stashed changes restored",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "Change base branch",
+    currentBase: "Base branch: {{branchName}}. Press to change the base.",
+    readOnlyTooltip: "Base branch: {{branchName}}",
+    placeholder: "Change base branch...",
+    searchPlaceholder: "Filter branches...",
+    empty: "No branches found.",
+    title: "Change base branch",
+    baseChanged: "Base branch set to {{branchName}}",
+    failedToChange: "Failed to change base branch",
   },
   agentAutocomplete: {
     searchingWorkspace: "Searching workspace...",

@@ -462,6 +462,8 @@ export const ru: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "Скрипты рабочего пространства",
+      baseBranchValue: "База: {{branchName}}",
+      copyBaseBranchName: "Копировать имя базовой ветки",
       copyPath: "Копировать путь",
       copyBranchName: "Копировать имя ветки",
       copied: "Скопировано",
@@ -1608,6 +1610,17 @@ export const ru: TranslationResources = {
     restore: "Восстановить",
     later: "Позже",
     stashRestored: "Изменения из stash восстановлены.",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "Изменить базовую ветку",
+    currentBase: "Базовая ветка: {{branchName}}. Нажмите, чтобы изменить базу.",
+    readOnlyTooltip: "Базовая ветка: {{branchName}}",
+    placeholder: "Изменить базовую ветку...",
+    searchPlaceholder: "Фильтр веток...",
+    empty: "Ветки не найдены.",
+    title: "Изменить базовую ветку",
+    baseChanged: "Базовая ветка установлена на {{branchName}}",
+    failedToChange: "Не удалось изменить базовую ветку",
   },
   agentAutocomplete: {
     searchingWorkspace: "Поиск в рабочем пространстве...",

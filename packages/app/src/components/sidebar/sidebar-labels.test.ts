@@ -24,6 +24,7 @@ function workspace(
     pinnedAt,
     labels,
     currentBranch: "main",
+    baseRef: null,
     statusBucket: "done",
     statusEnteredAt: null,
     archivingAt: null,

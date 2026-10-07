@@ -462,6 +462,8 @@ export const ptBR: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "Scripts do workspace",
+      baseBranchValue: "Base: {{branchName}}",
+      copyBaseBranchName: "Copiar nome do branch base",
       copyPath: "Copiar caminho",
       copyBranchName: "Copiar nome da branch",
       copied: "Copiado",
@@ -1610,6 +1612,17 @@ export const ptBR: TranslationResources = {
     restore: "Restaurar",
     later: "Depois",
     stashRestored: "Alterações em stash restauradas",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "Alterar branch base",
+    currentBase: "Branch base: {{branchName}}. Pressione para alterar a base.",
+    readOnlyTooltip: "Branch base: {{branchName}}",
+    placeholder: "Alterar branch base...",
+    searchPlaceholder: "Filtrar branches...",
+    empty: "Nenhum branch encontrado.",
+    title: "Alterar branch base",
+    baseChanged: "Branch base definido como {{branchName}}",
+    failedToChange: "Falha ao alterar o branch base",
   },
   agentAutocomplete: {
     searchingWorkspace: "Buscando workspace...",

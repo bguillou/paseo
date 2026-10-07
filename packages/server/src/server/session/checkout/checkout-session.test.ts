@@ -806,6 +806,33 @@ describe("CheckoutSession", () => {
     });
   });
 
+  describe("set base ref", () => {
+    it("rejects changing the base on a non-worktree checkout", async () => {
+      const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
+        git: { getSnapshot: async () => createGitSnapshot("/repo", "feature") },
+      });
+
+      await checkout.handleCheckoutSetBaseRefRequest({
+        type: "checkout.set_base_ref.request",
+        cwd: "/repo",
+        baseRefName: "develop",
+        requestId: "sb1",
+      });
+
+      expect(gitMutationCalls.notifyGitMutation).toEqual([]);
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]).toMatchObject({
+        type: "checkout.set_base_ref.response",
+        payload: { cwd: "/repo", success: false, baseRefName: null, requestId: "sb1" },
+      });
+      const [message] = emitted;
+      if (message.type !== "checkout.set_base_ref.response") {
+        throw new Error("unexpected message type");
+      }
+      expect(message.payload.error).not.toBeNull();
+    });
+  });
+
   describe("commit", () => {
     it("fails when no message is supplied and none can be generated", async () => {
       const { checkout, emitted, generatorCalls } = makeCheckoutSession();

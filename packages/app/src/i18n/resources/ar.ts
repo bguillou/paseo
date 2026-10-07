@@ -457,6 +457,8 @@ export const ar: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "البرامج النصية Workspace",
+      baseBranchValue: "الأساسي: {{branchName}}",
+      copyBaseBranchName: "نسخ اسم الفرع الأساسي",
       copyPath: "نسخ المسار",
       copyBranchName: "نسخ اسم الفرع",
       copied: "تم النسخ",
@@ -1579,6 +1581,17 @@ export const ar: TranslationResources = {
     restore: "يعيد",
     later: "لاحقاً",
     stashRestored: "تمت استعادة التغييرات المخفية",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "تغيير الفرع الأساسي",
+    currentBase: "الفرع الأساسي: {{branchName}}. اضغط لتغيير الفرع الأساسي.",
+    readOnlyTooltip: "الفرع الأساسي: {{branchName}}",
+    placeholder: "تغيير الفرع الأساسي...",
+    searchPlaceholder: "تصفية الفروع...",
+    empty: "لم يتم العثور على فروع.",
+    title: "تغيير الفرع الأساسي",
+    baseChanged: "تم تعيين الفرع الأساسي إلى {{branchName}}",
+    failedToChange: "تعذّر تغيير الفرع الأساسي",
   },
   agentAutocomplete: {
     searchingWorkspace: "جارٍ البحث في مساحة العمل...",

@@ -463,6 +463,8 @@ export const ja: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "ワークスペーススクリプト",
+      baseBranchValue: "ベース: {{branchName}}",
+      copyBaseBranchName: "ベースブランチ名をコピー",
       copyPath: "パスをコピー",
       copyBranchName: "ブランチ名をコピー",
       copied: "コピーしました",
@@ -1596,6 +1598,17 @@ export const ja: TranslationResources = {
     restore: "復元",
     later: "後で",
     stashRestored: "スタッシュした変更を復元しました",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "ベースブランチを変更",
+    currentBase: "ベースブランチ: {{branchName}}。押してベースを変更します。",
+    readOnlyTooltip: "ベースブランチ: {{branchName}}",
+    placeholder: "ベースブランチを変更...",
+    searchPlaceholder: "ブランチを絞り込み...",
+    empty: "ブランチが見つかりません。",
+    title: "ベースブランチを変更",
+    baseChanged: "ベースブランチを {{branchName}} に設定しました",
+    failedToChange: "ベースブランチの変更に失敗しました",
   },
   agentAutocomplete: {
     searchingWorkspace: "ワークスペースを検索中...",

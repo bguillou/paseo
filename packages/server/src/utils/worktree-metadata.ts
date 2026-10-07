@@ -239,6 +239,34 @@ export function writePaseoWorktreeMetadata(
   writePaseoWorktreeMetadataFile(worktreeRoot, metadata);
 }
 
+/**
+ * Re-point the worktree's base branch. Preserves every other metadata field (change-request
+ * hint, first-agent auto-name, runtime). Persists both the display name and the exact ref the
+ * caller resolved, so later diff/merge/PR operations resolve to a commit rather than a name.
+ */
+export function updatePaseoWorktreeBaseRef(
+  worktreeRoot: string,
+  options: { baseRefName: string; baseRef: string },
+): PaseoWorktreeMetadata {
+  const current = readPaseoWorktreeMetadata(worktreeRoot);
+  if (!current) {
+    throw new Error("Cannot update worktree base ref: missing base metadata");
+  }
+
+  const baseRefName = normalizeBaseRefName(options.baseRefName);
+  assertValidBaseRef(baseRefName);
+  const baseRef = options.baseRef.trim();
+  assertValidBaseRef(baseRef);
+
+  const next: PaseoWorktreeMetadata = {
+    ...current,
+    baseRefName,
+    baseRef,
+  };
+  writePaseoWorktreeMetadataFile(worktreeRoot, next);
+  return next;
+}
+
 export function writePaseoWorktreeRuntimeMetadata(
   worktreeRoot: string,
   options: { worktreePort: number },

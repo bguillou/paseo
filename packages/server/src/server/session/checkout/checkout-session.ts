@@ -10,6 +10,7 @@ import type {
   CheckoutCommitFileDiffRequest,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
+  CheckoutSetBaseRefRequest,
   CheckoutStatusRequest,
   SessionInboundMessage,
   SessionOutboundMessage,
@@ -52,8 +53,10 @@ import {
   pushCurrentBranch,
   listCheckoutCommits,
   getCommitFileDiff,
+  resolveBranchCheckout,
 } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
+import { updatePaseoWorktreeBaseRef } from "../../../utils/worktree-metadata.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
@@ -639,6 +642,67 @@ export class CheckoutSession {
           cwd,
           success: false,
           currentBranch: null,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutSetBaseRefRequest(msg: CheckoutSetBaseRefRequest): Promise<void> {
+    const { cwd, baseRefName, requestId } = msg;
+    const resolvedCwd = expandTilde(cwd);
+
+    try {
+      const snapshot = await this.workspaceGitService.getSnapshot(resolvedCwd);
+      // Re-pointing the base is a worktree-only concept: that is the only kind whose base is a
+      // persisted fact (worktree.json). Ordinary checkouts derive it live from origin/HEAD.
+      if (!snapshot.git.isGit || !snapshot.git.isPaseoOwnedWorktree || !snapshot.git.repoRoot) {
+        throw new Error("Changing the base branch is only supported on Paseo worktrees");
+      }
+
+      const resolution = await resolveBranchCheckout(resolvedCwd, baseRefName);
+      if (resolution.kind === "not-found") {
+        throw new Error(`Base branch not found: ${baseRefName}`);
+      }
+      const exactRef =
+        resolution.kind === "local"
+          ? `refs/heads/${resolution.name}`
+          : `refs/remotes/${resolution.remoteRef}`;
+
+      const updated = updatePaseoWorktreeBaseRef(snapshot.git.repoRoot, {
+        baseRefName: resolution.name,
+        baseRef: exactRef,
+      });
+
+      // Force a fresh snapshot so diff/ahead-behind/merge target/PR base all read the new base,
+      // then push the status update (the branch observer only reacts to branch changes, not base
+      // changes) and a workspace_update for the sidebar.
+      await this.gitMutation.notifyGitMutation(resolvedCwd, "set-base-ref", {
+        invalidateForge: true,
+      });
+      const refreshed = await this.workspaceGitService.getSnapshot(resolvedCwd);
+      this.emitStatusUpdate(resolvedCwd, refreshed);
+      this.scheduleDiffRefresh(resolvedCwd);
+      await this.host.emitWorkspaceUpdateForCwd(resolvedCwd);
+
+      this.host.emit({
+        type: "checkout.set_base_ref.response",
+        payload: {
+          cwd,
+          success: true,
+          baseRefName: updated.baseRefName,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.set_base_ref.response",
+        payload: {
+          cwd,
+          success: false,
+          baseRefName: null,
           error: toCheckoutError(error),
           requestId,
         },
