@@ -27,6 +27,8 @@ import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
+import { BaseBranchSwitcher } from "@/components/base-branch-switcher";
+import { useHostFeature } from "@/runtime/host-features";
 import { HostBadge } from "@/hosts/host-badge";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -949,6 +951,10 @@ interface WorkspaceHeaderTitleBarProps {
   subtitle: string;
   isSubtitleDistinct: boolean;
   currentBranchName: string | null;
+  baseBranchName: string | null;
+  isGitCheckout: boolean;
+  isPaseoOwnedWorktree: boolean;
+  workspaceDirectory: string | null;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   workspaceScripts: WorkspaceDescriptor["scripts"];
@@ -978,6 +984,10 @@ function WorkspaceHeaderTitleBar({
   subtitle,
   isSubtitleDistinct,
   currentBranchName,
+  baseBranchName,
+  isGitCheckout,
+  isPaseoOwnedWorktree,
+  workspaceDirectory,
   normalizedServerId,
   normalizedWorkspaceId,
   workspaceScripts,
@@ -1000,6 +1010,10 @@ function WorkspaceHeaderTitleBar({
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
+  // Re-pointing the base is worktree-only and gated on the daemon feature; otherwise the base
+  // renders read-only inside the switcher.
+  const daemonSupportsSetBaseRef = useHostFeature(normalizedServerId, "checkoutSetBaseRef");
+  const canChangeBase = isPaseoOwnedWorktree && daemonSupportsSetBaseRef;
   return (
     <View style={styles.headerTitleContainer}>
       {isLoading ? (
@@ -1007,14 +1021,26 @@ function WorkspaceHeaderTitleBar({
           <View style={styles.headerTitleSkeleton} />
         </View>
       ) : (
-        <View style={styles.headerTitleTextGroup}>
-          <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
-          <WorkspaceHeaderProjectRow
-            subtitle={subtitle}
-            isSubtitleDistinct={isSubtitleDistinct}
+        <>
+          <View style={styles.headerTitleTextGroup}>
+            <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
+            <WorkspaceHeaderProjectRow
+              subtitle={subtitle}
+              isSubtitleDistinct={isSubtitleDistinct}
+              serverId={normalizedServerId}
+            />
+          </View>
+          {/* Sibling of the title group (not stacked inside it) so the base pill sits beside
+              the title on one row and never adds height to the fixed-height header. */}
+          <BaseBranchSwitcher
+            baseBranchName={baseBranchName}
             serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+            workspaceDirectory={workspaceDirectory}
+            isGitCheckout={isGitCheckout}
+            canChangeBase={canChangeBase}
           />
-        </View>
+        </>
       )}
       <View style={styles.compactHeaderMenuCluster}>
         {isMobile ? (
@@ -1159,6 +1185,8 @@ interface WorkspaceHeaderFields {
   isWorkspaceHeaderSubtitleDistinct: boolean;
   isGitCheckout: boolean;
   currentBranchName: string | null;
+  baseBranchName: string | null;
+  isPaseoOwnedWorktree: boolean;
 }
 
 function buildWorkspaceHeaderCheckoutState(input: {
@@ -1177,6 +1205,8 @@ function buildWorkspaceHeaderCheckoutState(input: {
     checkout: {
       isGit: input.data.isGit,
       currentBranch: input.data.currentBranch,
+      baseRef: input.data.baseRef,
+      isPaseoOwnedWorktree: input.data.isPaseoOwnedWorktree,
     },
   };
 }
@@ -1194,6 +1224,8 @@ function deriveWorkspaceHeaderFields(input: {
       isWorkspaceHeaderSubtitleDistinct: false,
       isGitCheckout: false,
       currentBranchName: null,
+      baseBranchName: null,
+      isPaseoOwnedWorktree: false,
     };
   }
   return {
@@ -1203,6 +1235,8 @@ function deriveWorkspaceHeaderFields(input: {
     isWorkspaceHeaderSubtitleDistinct: renderState.isSubtitleDistinct,
     isGitCheckout: renderState.isGitCheckout,
     currentBranchName: renderState.currentBranchName,
+    baseBranchName: renderState.baseBranchName,
+    isPaseoOwnedWorktree: renderState.isPaseoOwnedWorktree,
   };
 }
 
@@ -1756,6 +1790,8 @@ function WorkspaceScreenContent({
     isWorkspaceHeaderSubtitleDistinct,
     isGitCheckout,
     currentBranchName,
+    baseBranchName,
+    isPaseoOwnedWorktree,
   } = deriveWorkspaceHeaderFields({
     workspace: workspaceDescriptor,
     checkoutState: workspaceHeaderCheckoutState,
@@ -3891,6 +3927,10 @@ function WorkspaceScreenContent({
                 subtitle={workspaceHeaderSubtitle}
                 isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
                 currentBranchName={currentBranchName}
+                baseBranchName={baseBranchName}
+                isGitCheckout={isGitCheckout}
+                isPaseoOwnedWorktree={isPaseoOwnedWorktree}
+                workspaceDirectory={workspaceDirectory}
                 normalizedServerId={normalizedServerId}
                 normalizedWorkspaceId={normalizedWorkspaceId}
                 workspaceScripts={workspaceScripts}
@@ -3922,6 +3962,9 @@ function WorkspaceScreenContent({
       canOpenImportSheet,
       createTerminalDisabled,
       currentBranchName,
+      baseBranchName,
+      isGitCheckout,
+      isPaseoOwnedWorktree,
       handleCopyBranchName,
       handleCopyWorkspacePath,
       handleCreateBrowserTab,

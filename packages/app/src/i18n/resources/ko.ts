@@ -458,6 +458,8 @@ export const ko: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "워크스페이스 스크립트",
+      baseBranchValue: "베이스: {{branchName}}",
+      copyBaseBranchName: "베이스 브랜치 이름 복사",
       copyPath: "경로 복사",
       copyBranchName: "브랜치 이름 복사",
       copied: "복사됨",
@@ -1589,6 +1591,17 @@ export const ko: TranslationResources = {
     restore: "복원",
     later: "나중에",
     stashRestored: "스태시된 변경 사항이 복원되었습니다",
+  },
+  baseBranchSwitcher: {
+    triggerTooltip: "베이스 브랜치 변경",
+    currentBase: "베이스 브랜치: {{branchName}}. 눌러서 베이스를 변경합니다.",
+    readOnlyTooltip: "베이스 브랜치: {{branchName}}",
+    placeholder: "베이스 브랜치 변경...",
+    searchPlaceholder: "브랜치 필터링...",
+    empty: "브랜치를 찾을 수 없습니다.",
+    title: "베이스 브랜치 변경",
+    baseChanged: "베이스 브랜치를 {{branchName}}(으)로 설정했습니다",
+    failedToChange: "베이스 브랜치를 변경하지 못했습니다",
   },
   agentAutocomplete: {
     searchingWorkspace: "워크스페이스 검색 중...",

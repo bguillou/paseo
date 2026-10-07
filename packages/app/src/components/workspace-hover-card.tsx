@@ -15,6 +15,7 @@ import {
   FileDiff,
   Folder,
   GitBranch,
+  GitFork,
   Server,
 } from "lucide-react-native";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
@@ -114,6 +115,15 @@ function WorkspaceHoverCardContent({
           testID="hover-card-workspace-branch"
         />
       ) : null}
+      {workspace.baseRef ? (
+        <CopyableInfoRow
+          icon={ThemedGitFork}
+          value={t("workspace.hoverCard.baseBranchValue", { branchName: workspace.baseRef })}
+          copyValue={workspace.baseRef}
+          copyLabel={t("workspace.hoverCard.copyBaseBranchName")}
+          testID="hover-card-workspace-base-branch"
+        />
+      ) : null}
       {workspace.workspaceDirectoryLabel ? (
         <CopyableInfoRow
           icon={ThemedFolder}
@@ -134,6 +144,7 @@ function WorkspaceHoverCardContent({
 }
 
 const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedGitFork = withUnistyles(GitFork);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedServer = withUnistyles(Server);
 const ThemedFileDiff = withUnistyles(FileDiff);

@@ -138,7 +138,12 @@ describe("workspace source of truth consumption", () => {
         workspace: createWorkspaceDescriptor(),
         checkoutState: {
           kind: "ready",
-          checkout: { isGit: true, currentBranch: "feat/workspace-sot" },
+          checkout: {
+            isGit: true,
+            currentBranch: "feat/workspace-sot",
+            baseRef: "main",
+            isPaseoOwnedWorktree: true,
+          },
         },
       }),
     ).toEqual({
@@ -148,6 +153,8 @@ describe("workspace source of truth consumption", () => {
       isSubtitleDistinct: true,
       isGitCheckout: true,
       currentBranchName: "feat/workspace-sot",
+      baseBranchName: "main",
+      isPaseoOwnedWorktree: true,
     });
   });
 
@@ -162,7 +169,12 @@ describe("workspace source of truth consumption", () => {
         }),
         checkoutState: {
           kind: "ready",
-          checkout: { isGit: false, currentBranch: null },
+          checkout: {
+            isGit: false,
+            currentBranch: null,
+            baseRef: null,
+            isPaseoOwnedWorktree: false,
+          },
         },
       }),
     ).toEqual({
@@ -172,6 +184,8 @@ describe("workspace source of truth consumption", () => {
       isSubtitleDistinct: false,
       isGitCheckout: false,
       currentBranchName: null,
+      baseBranchName: null,
+      isPaseoOwnedWorktree: false,
     });
   });
 
@@ -188,6 +202,8 @@ describe("workspace source of truth consumption", () => {
       isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
+      baseBranchName: null,
+      isPaseoOwnedWorktree: false,
     });
   });
 

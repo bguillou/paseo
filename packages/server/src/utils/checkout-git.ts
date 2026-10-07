@@ -65,6 +65,7 @@ export type GitMutationRefreshReason =
   | "stash-push"
   | "stash-pop"
   | "discard-changes"
+  | "set-base-ref"
   | "create-worktree";
 
 const DISCARD_CHANGES_TIMEOUT_MS = 120_000;
