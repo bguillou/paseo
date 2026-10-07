@@ -978,6 +978,8 @@ export const ar: TranslationResources = {
           addToChat: "إضافة إلى الدردشة",
           addAllToChat: "إضافة الكل إلى الدردشة",
           addingToChat: "جارٍ الإضافة...",
+          reply: "رد",
+          sendingReply: "جارٍ الإرسال…",
         },
         checksOverview: {
           headline: {
@@ -1078,6 +1080,7 @@ export const ar: TranslationResources = {
         errors: {
           statusLoadFailed: "غير قادر على تحميل حالة طلب السحب",
           activityLoadFailed: "غير قادر على تحميل نشاط طلب السحب",
+          replyFailed: "تعذّر نشر الرد",
         },
       },
       forgeSetup: {

@@ -2275,6 +2275,37 @@ export const CheckoutGithubSetAutoMergeRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Posts a reply to a pull-request comment thread on the forge. Forge-neutral: the
+// request carries every identity the timeline exposed (opaque `threadId`, file
+// `location`, `isGeneralDiscussion`) and each adapter uses what it needs — GitHub
+// and GitLab reply by thread/discussion id, Gitea (no stable thread id) creates a
+// review comment at `location`. Gated on server_info.features.checkoutForgeReplyComment.
+export const CheckoutForgeReplyCommentRequestSchema = z.object({
+  type: z.literal("checkout.forge.reply_comment.request"),
+  cwd: z.string(),
+  prNumber: z.number(),
+  body: z.string(),
+  // Repo identity from the PR panel. Adapters that can't resolve the slug from the
+  // cwd remote (Gitea) address the forge API with these. Optional: GitHub resolves
+  // from origin and GitLab uses glab's `:fullpath`.
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
+  // Opaque forge thread/discussion id from the timeline. Absent for forges with no
+  // stable id (Gitea) and for general PR comments that start a new top-level reply.
+  threadId: z.string().optional(),
+  // True when the target is a general (non-file) discussion rather than a file thread.
+  isGeneralDiscussion: z.boolean().optional(),
+  // File position of the thread, when it has one. Required by adapters that reply by
+  // re-anchoring a new review comment (Gitea) rather than by thread id.
+  location: z
+    .object({
+      path: z.string(),
+      line: z.number().optional(),
+    })
+    .optional(),
+  requestId: z.string(),
+});
+
 const CheckoutCommitFileSchema = z.object({
   path: z.string(),
   additions: z.number(),
@@ -3299,6 +3330,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrMergeRequestSchema,
   CheckoutForgeSetAutoMergeRequestSchema,
   CheckoutGithubSetAutoMergeRequestSchema,
+  CheckoutForgeReplyCommentRequestSchema,
   CheckoutCommitsListRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
@@ -3582,6 +3614,8 @@ export const ServerInfoStatusPayloadSchema = z
         // feature gate and checkoutGithubSetAutoMerge fallback after 2027-01-17
         // once the supported daemon floor is >= v0.2.0.
         checkoutForgeSetAutoMerge: z.boolean().optional(),
+        // COMPAT(checkoutForgeReplyComment): added in v0.9.0, remove gate after 2027-10-07.
+        checkoutForgeReplyComment: z.boolean().optional(),
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising and
         // consuming it after 2027-01-17 once supported floors are >= v0.2.0.
@@ -5528,6 +5562,18 @@ export const CheckoutGithubSetAutoMergeResponseSchema = z.object({
   }),
 });
 
+export const CheckoutForgeReplyCommentResponseSchema = z.object({
+  type: z.literal("checkout.forge.reply_comment.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    // URL of the posted reply when the forge returns one.
+    url: z.string().nullable(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutDiscardChangesResponseSchema = z.object({
   type: z.literal("checkout.discard_changes.response"),
   payload: z.object({
@@ -6984,6 +7030,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrMergeResponseSchema,
   CheckoutForgeSetAutoMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
+  CheckoutForgeReplyCommentResponseSchema,
   CheckoutCommitsListResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
@@ -7369,6 +7416,12 @@ export type CheckoutGithubSetAutoMergeRequest = z.infer<
 >;
 export type CheckoutGithubSetAutoMergeResponse = z.infer<
   typeof CheckoutGithubSetAutoMergeResponseSchema
+>;
+export type CheckoutForgeReplyCommentRequest = z.infer<
+  typeof CheckoutForgeReplyCommentRequestSchema
+>;
+export type CheckoutForgeReplyCommentResponse = z.infer<
+  typeof CheckoutForgeReplyCommentResponseSchema
 >;
 export type CheckoutForgeGetCheckDetailsRequest = z.infer<
   typeof CheckoutForgeGetCheckDetailsRequestSchema

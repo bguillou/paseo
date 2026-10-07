@@ -56,6 +56,7 @@ import type {
   CheckoutPrCreateResponse,
   CheckoutPrMergeResponse,
   CheckoutPrMergeMethod,
+  CheckoutForgeReplyCommentResponse,
   CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutForgeGetCheckDetailsResponse,
@@ -508,6 +509,7 @@ type CheckoutRefreshPayload = CheckoutRefreshResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
+type CheckoutForgeReplyCommentPayload = CheckoutForgeReplyCommentResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
 type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
@@ -4318,6 +4320,36 @@ export class DaemonClient {
         cwd,
         enabled: input.enabled,
         ...(input.enabled ? { mergeMethod: input.method } : {}),
+      },
+      timeout: 60000,
+    });
+  }
+
+  async checkoutForgeReplyComment(
+    cwd: string,
+    input: {
+      prNumber: number;
+      body: string;
+      repoOwner?: string;
+      repoName?: string;
+      threadId?: string;
+      isGeneralDiscussion?: boolean;
+      location?: { path: string; line?: number };
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeReplyCommentPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.reply_comment.response">({
+      requestId,
+      message: {
+        type: "checkout.forge.reply_comment.request",
+        cwd,
+        prNumber: input.prNumber,
+        body: input.body,
+        ...(input.repoOwner ? { repoOwner: input.repoOwner } : {}),
+        ...(input.repoName ? { repoName: input.repoName } : {}),
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+        ...(input.isGeneralDiscussion ? { isGeneralDiscussion: input.isGeneralDiscussion } : {}),
+        ...(input.location ? { location: input.location } : {}),
       },
       timeout: 60000,
     });

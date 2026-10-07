@@ -1474,3 +1474,36 @@ describe("createGitLabService", () => {
     );
   });
 });
+
+describe("createGitLabService replyToComment", () => {
+  it("posts into a discussion when a thread id is known", async () => {
+    const { service, calls } = makeService(() => ok("{}"));
+    await service.replyToComment?.({
+      cwd: "/repo",
+      prNumber: 7,
+      body: "looks good",
+      threadId: "disc123",
+    });
+    expect(calls).toContainEqual([
+      "api",
+      "--method",
+      "POST",
+      "projects/:fullpath/merge_requests/7/discussions/disc123/notes",
+      "--field",
+      "body=looks good",
+    ]);
+  });
+
+  it("posts a new MR note when there is no thread id", async () => {
+    const { service, calls } = makeService(() => ok("{}"));
+    await service.replyToComment?.({ cwd: "/repo", prNumber: 7, body: "fyi" });
+    expect(calls).toContainEqual([
+      "api",
+      "--method",
+      "POST",
+      "projects/:fullpath/merge_requests/7/notes",
+      "--field",
+      "body=fyi",
+    ]);
+  });
+});

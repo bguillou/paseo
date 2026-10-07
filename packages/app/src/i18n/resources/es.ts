@@ -1011,6 +1011,8 @@ export const es: TranslationResources = {
           addToChat: "Añadir al chat",
           addAllToChat: "Añadir todo al chat",
           addingToChat: "Añadiendo...",
+          reply: "Responder",
+          sendingReply: "Enviando…",
         },
         checksOverview: {
           headline: {
@@ -1111,6 +1113,7 @@ export const es: TranslationResources = {
         errors: {
           statusLoadFailed: "No se puede cargar el estado de la solicitud de extracción",
           activityLoadFailed: "No se puede cargar la actividad de solicitud de extracción",
+          replyFailed: "No se pudo publicar la respuesta",
         },
       },
       forgeSetup: {

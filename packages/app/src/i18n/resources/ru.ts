@@ -995,6 +995,8 @@ export const ru: TranslationResources = {
           addToChat: "Добавить в чат",
           addAllToChat: "Добавить всё в чат",
           addingToChat: "Добавление...",
+          reply: "Ответить",
+          sendingReply: "Отправка…",
         },
         checksOverview: {
           headline: {
@@ -1095,6 +1097,7 @@ export const ru: TranslationResources = {
         errors: {
           statusLoadFailed: "Не удалось загрузить статус PR",
           activityLoadFailed: "Не удалось загрузить активность PR",
+          replyFailed: "Не удалось отправить ответ",
         },
       },
       forgeSetup: {

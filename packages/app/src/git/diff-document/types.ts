@@ -1,6 +1,7 @@
 import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
+import type { PrInlineActions } from "./pr-inline";
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
@@ -17,6 +18,8 @@ interface DiffDocumentBaseProps {
 export interface WorkingDiffMode {
   kind: "working";
   reviewActions?: InlineReviewActions;
+  /** Read-only forge PR comment threads, anchored inline, with an inline reply composer. */
+  prReviewActions?: PrInlineActions;
   onFilePress?: (path: string) => void;
   focusPath?: string;
   focusRequestId?: number;
@@ -124,7 +127,10 @@ export interface DiffLineRow {
   top: number;
   height: number;
   cells: [DiffCell] | [DiffCell | null, DiffCell | null];
+  /** Total reserved gap below the text: local review drafts plus PR inline threads. */
   reviewHeight: number;
+  /** Portion of {@link reviewHeight} used by PR inline threads (rendered below drafts). */
+  prReviewHeight: number;
 }
 
 export interface DiffStatusRow {
@@ -183,6 +189,7 @@ export interface BuildDiffDocumentModelInput {
   measureText: TextMeasurer;
   palette: DiffPalette;
   reviewActions?: InlineReviewActions;
+  prReviewActions?: PrInlineActions;
   labels: { binary: string; tooLarge: string };
   materializationWindow?: { top: number; height: number };
   /** A geometry-compatible model whose unchanged file measurements may be reused. */

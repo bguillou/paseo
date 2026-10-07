@@ -985,6 +985,8 @@ export const ko: TranslationResources = {
           addToChat: "채팅에 추가",
           addAllToChat: "모두 채팅에 추가",
           addingToChat: "추가 중...",
+          reply: "답글",
+          sendingReply: "전송 중…",
         },
         checksOverview: {
           headline: {
@@ -1085,6 +1087,7 @@ export const ko: TranslationResources = {
         errors: {
           statusLoadFailed: "풀 리퀘스트 상태를 불러올 수 없습니다",
           activityLoadFailed: "풀 리퀘스트 활동을 불러올 수 없습니다",
+          replyFailed: "답글을 게시할 수 없습니다",
         },
       },
       forgeSetup: {

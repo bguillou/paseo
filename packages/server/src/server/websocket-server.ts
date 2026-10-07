@@ -1809,6 +1809,8 @@ export class VoiceAssistantWebSocketServer {
         // feature gate and legacy fallback after 2027-01-17 once the supported
         // daemon floor is >= v0.2.0.
         checkoutForgeSetAutoMerge: true,
+        // COMPAT(checkoutForgeReplyComment): added in v0.9.0, remove gate after 2027-10-07.
+        checkoutForgeReplyComment: true,
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising it after
         // 2027-01-17 once supported floors are >= v0.2.0.

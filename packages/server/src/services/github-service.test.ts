@@ -4782,3 +4782,27 @@ describe("ForgeService", () => {
     ).rejects.toThrow("Unable to resolve GitHub repository for pull request creation");
   });
 });
+
+describe("createGitHubService replyToComment", () => {
+  it("replies into a review thread via GraphQL when a thread id is known", async () => {
+    const runner = createRunner([
+      JSON.stringify({
+        data: { addPullRequestReviewThreadReply: { comment: { url: "https://gh/reply" } } },
+      }),
+    ]);
+    const service = createGitHubService({ runner: runner.runner });
+
+    const result = await service.replyToComment?.({
+      cwd: "/tmp/repo",
+      prNumber: 42,
+      body: "looks good",
+      threadId: "PRRT_node",
+    });
+
+    expect(result).toEqual({ url: "https://gh/reply" });
+    const call = runner.calls[0];
+    expect(call?.args.slice(0, 2)).toEqual(["api", "graphql"]);
+    expect(call?.args).toContain("threadId=PRRT_node");
+    expect(call?.args).toContain("body=looks good");
+  });
+});

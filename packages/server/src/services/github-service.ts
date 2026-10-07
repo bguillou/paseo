@@ -550,6 +550,29 @@ query PullRequestStatusFacts($owner: String!, $name: String!, $number: Int!) {
   }
 }`;
 
+const ADD_REVIEW_THREAD_REPLY_MUTATION = `
+mutation AddReviewThreadReply($threadId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
+    comment {
+      url
+    }
+  }
+}`;
+
+const AddReviewThreadReplyGraphqlSchema = z.object({
+  data: z
+    .object({
+      addPullRequestReviewThreadReply: z
+        .object({
+          comment: z.object({ url: z.string().optional() }).nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
 const PULL_REQUEST_TIMELINE_QUERY = `
 query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -2512,6 +2535,57 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         "{}",
       );
       return parsed;
+    },
+
+    async replyToComment(input) {
+      // A file thread carries the review-thread node id: reply into that thread
+      // via GraphQL so the reply nests under the same conversation. A general PR
+      // comment (no thread id) becomes a new top-level issue comment.
+      if (input.threadId && !input.isGeneralDiscussion) {
+        const parsed = await runGhJson(
+          [
+            "api",
+            "graphql",
+            "-f",
+            `query=${ADD_REVIEW_THREAD_REPLY_MUTATION}`,
+            "-f",
+            `threadId=${input.threadId}`,
+            "-f",
+            `body=${input.body}`,
+          ],
+          { cwd: input.cwd },
+          AddReviewThreadReplyGraphqlSchema,
+          "{}",
+        );
+        const url = parsed.data?.addPullRequestReviewThreadReply?.comment?.url;
+        return url ? { url } : {};
+      }
+
+      let slug = await resolveGitHubSlugFromOrigin(input.cwd);
+      if (!slug) {
+        const repoView = await getGitHubRepoView({ cwd: input.cwd, run });
+        slug =
+          repoView?.owner?.login && repoView.name
+            ? `${repoView.owner.login}/${repoView.name}`
+            : null;
+      }
+      if (!slug) {
+        throw new Error("Unable to resolve GitHub repository for comment reply");
+      }
+      const parsed = await runGhJson(
+        [
+          "api",
+          "-X",
+          "POST",
+          `repos/${slug}/issues/${input.prNumber}/comments`,
+          "-f",
+          `body=${input.body}`,
+        ],
+        { cwd: input.cwd },
+        z.object({ html_url: z.string().optional() }),
+        "{}",
+      );
+      return parsed.html_url ? { url: parsed.html_url } : {};
     },
 
     async mergePullRequest(input) {

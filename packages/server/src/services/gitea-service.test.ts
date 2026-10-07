@@ -3042,3 +3042,31 @@ describe("detectGiteaFamilySoftware", () => {
     expect(software).toBe("gitea");
   });
 });
+
+describe("createGiteaService replyToComment", () => {
+  it("posts an issue comment and quotes the file location (no stable thread id)", async () => {
+    const { service, calls } = makeService(() => ok(JSON.stringify({ html_url: "https://g/x" })));
+    const result = await service.replyToComment?.({
+      cwd: "/repo",
+      prNumber: 7,
+      body: "nice",
+      repoOwner: "octo",
+      repoName: "repo",
+      location: { path: "src/a.ts", line: 5 },
+    });
+    const call = calls.find((args) => args[0] === "api");
+    expect(call?.slice(0, 3)).toEqual(["api", "--method", "POST"]);
+    expect(call?.at(-1)).toBe("repos/octo/repo/issues/7/comments");
+    expect(JSON.parse(argValue(call ?? [], "--data") ?? "{}")).toEqual({
+      body: "> `src/a.ts:5`\n\nnice",
+    });
+    expect(result?.url).toBe("https://g/x");
+  });
+
+  it("requires repo identity to address the Gitea API", async () => {
+    const { service } = makeService(() => ok("{}"));
+    await expect(
+      service.replyToComment?.({ cwd: "/repo", prNumber: 7, body: "nice" }),
+    ).rejects.toThrow();
+  });
+});

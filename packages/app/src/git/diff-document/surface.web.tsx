@@ -12,6 +12,8 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { InlineReviewAddButton, InlineReviewThread } from "@/review";
+import { PrInlineThread } from "./pr-inline-thread";
+import type { PrInlineActions, PrInlineThreadData } from "./pr-inline";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 import { DocumentFileHeader } from "./document-file-header";
@@ -159,6 +161,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const measurement =
     readyTypographyResource === typographyResource ? typographyResource.measureText : null;
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
+  const prReviewActions = props.mode.kind === "working" ? props.mode.prReviewActions : undefined;
   const model = useMemo(() => {
     if (!loadedTypography || !measurement) {
       return emptyDiffDocumentModel({
@@ -178,6 +181,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       measureText: measurement,
       palette: props.palette,
       reviewActions,
+      prReviewActions,
       labels: {
         binary: t("workspace.git.diff.binaryFile"),
         tooLarge: t("workspace.git.diff.tooLarge"),
@@ -194,6 +198,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     props.files,
     props.palette,
     reviewActions,
+    prReviewActions,
     t,
     desiredTypography.lineHeight,
     loadedTypography,
@@ -848,6 +853,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
           {props.mode.kind === "working" && reviewActions
             ? model.rows.map((row) => {
                 if (row.kind !== "line" || row.reviewHeight === 0) return null;
+                const draftHeight = row.reviewHeight - row.prReviewHeight;
+                if (draftHeight === 0) return null;
                 const columnWidth = model.viewportWidth / row.cells.length;
                 return row.cells.map((cell, index) => {
                   if (!cell?.reviewTarget) return null;
@@ -865,7 +872,30 @@ export function DiffSurface(props: DiffSurfaceProps) {
                       top={row.top + row.height - row.reviewHeight}
                       left={index * columnWidth}
                       width={columnWidth}
-                      height={row.reviewHeight}
+                      height={draftHeight}
+                      pinToViewport={!model.wrapLines}
+                    />
+                  );
+                });
+              })
+            : null}
+          {props.mode.kind === "working" && prReviewActions
+            ? model.rows.map((row) => {
+                if (row.kind !== "line" || row.prReviewHeight === 0) return null;
+                const columnWidth = model.viewportWidth / row.cells.length;
+                return row.cells.map((cell, index) => {
+                  if (!cell?.reviewTarget) return null;
+                  const threads = prReviewActions.threadsByTarget.get(cell.reviewTarget.key);
+                  if (!threads || threads.length === 0) return null;
+                  return (
+                    <WebPrThread
+                      key={cell.reviewTarget.key}
+                      threads={threads}
+                      actions={prReviewActions}
+                      top={row.top + row.height - row.prReviewHeight}
+                      left={index * columnWidth}
+                      width={columnWidth}
+                      height={row.prReviewHeight}
                       pinToViewport={!model.wrapLines}
                     />
                   );
@@ -1054,6 +1084,40 @@ function WebReviewThread({
       <InlineReviewThread
         reviewTarget={target}
         reviewActions={actions}
+        height={height}
+        viewportWidth={width}
+        pinToViewport={pinToViewport}
+      />
+    </div>
+  );
+}
+
+function WebPrThread({
+  threads,
+  actions,
+  top,
+  left,
+  width,
+  height,
+  pinToViewport,
+}: {
+  threads: readonly PrInlineThreadData[];
+  actions: PrInlineActions;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  pinToViewport: boolean;
+}) {
+  const style = useMemo<React.CSSProperties>(
+    () => ({ ...REVIEW_STYLE, top, left, width, height }),
+    [height, left, top, width],
+  );
+  return (
+    <div style={style} data-diff-review="true" onContextMenu={stopContextMenuPropagation}>
+      <PrInlineThread
+        threads={threads}
+        actions={actions}
         height={height}
         viewportWidth={width}
         pinToViewport={pinToViewport}

@@ -225,6 +225,32 @@ export interface PullRequestAutoMergeResult {
   success: true;
 }
 
+/**
+ * Forge-neutral reply target. The caller passes every identity the timeline
+ * exposed; each adapter uses what it needs. GitHub/GitLab reply by `threadId`
+ * (review-thread node id / discussion id). Gitea has no stable thread id and
+ * re-anchors a new review comment at `location`. `isGeneralDiscussion` marks a
+ * non-file reply chain, and a missing `threadId` means a new top-level comment.
+ */
+export interface ReplyToCommentOptions {
+  cwd: string;
+  prNumber: number;
+  body: string;
+  repoOwner?: string;
+  repoName?: string;
+  threadId?: string;
+  isGeneralDiscussion?: boolean;
+  location?: {
+    path: string;
+    line?: number;
+  };
+}
+
+export interface ReplyToCommentResult {
+  /** URL of the posted reply when the forge returns one. */
+  url?: string;
+}
+
 export type ForgeReadOptions =
   | {
       force?: false;
@@ -477,6 +503,13 @@ export interface ForgeService {
   searchIssuesAndPrs(options: SearchIssuesAndPrsOptions): Promise<SearchResult>;
   createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;
   mergePullRequest(options: MergePullRequestOptions): Promise<PullRequestMergeResult>;
+  /**
+   * Post a reply to a pull-request comment thread. Optional: an adapter that
+   * cannot write comments omits it, and the session handler reports the
+   * operation as unsupported. Gated to clients via
+   * server_info.features.checkoutForgeReplyComment.
+   */
+  replyToComment?(options: ReplyToCommentOptions): Promise<ReplyToCommentResult>;
   enablePullRequestAutoMerge(
     options: EnablePullRequestAutoMergeOptions,
   ): Promise<PullRequestAutoMergeResult>;

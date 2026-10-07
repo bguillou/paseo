@@ -58,6 +58,7 @@ export type GitMutationRefreshReason =
   | "merge-pr"
   | "enable-pr-auto-merge"
   | "disable-pr-auto-merge"
+  | "reply-comment"
   | "create-pr"
   | "switch-branch"
   | "rename-branch"

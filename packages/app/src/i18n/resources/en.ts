@@ -986,6 +986,8 @@ export const en = {
           addToChat: "Add to chat",
           addAllToChat: "Add all to chat",
           addingToChat: "Adding...",
+          reply: "Reply",
+          sendingReply: "Sending…",
         },
         checksOverview: {
           headline: {
@@ -1086,6 +1088,7 @@ export const en = {
         errors: {
           statusLoadFailed: "Unable to load pull request status",
           activityLoadFailed: "Unable to load pull request activity",
+          replyFailed: "Unable to post reply",
         },
       },
       forgeSetup: {

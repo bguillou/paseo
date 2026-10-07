@@ -50,6 +50,8 @@ import type {
   PullRequestTimelineError,
   PullRequestTimelineErrorKind,
   PullRequestTimelineItem,
+  ReplyToCommentOptions,
+  ReplyToCommentResult,
   SearchIssuesAndPrsOptions,
   SearchResult,
 } from "./forge-service.js";
@@ -1221,6 +1223,21 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       }
       await run(args, { cwd: input.cwd });
       return { success: true };
+    },
+
+    async replyToComment(input: ReplyToCommentOptions): Promise<ReplyToCommentResult> {
+      // The timeline's `threadId` is the GitLab discussion id (stable). Reply into
+      // it so the note nests under the same discussion; a reply with no discussion
+      // becomes a new top-level MR note. `:fullpath` lets glab resolve the project
+      // from the cwd's remote, as the other write endpoints do.
+      const base = `projects/:fullpath/merge_requests/${input.prNumber}`;
+      const path = input.threadId
+        ? `${base}/discussions/${encodeURIComponent(input.threadId)}/notes`
+        : `${base}/notes`;
+      await run(["api", "--method", "POST", path, "--field", `body=${input.body}`], {
+        cwd: input.cwd,
+      });
+      return {};
     },
 
     async getPullRequestTimeline(

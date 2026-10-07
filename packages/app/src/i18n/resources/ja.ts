@@ -991,6 +991,8 @@ export const ja: TranslationResources = {
           addToChat: "チャットに追加",
           addAllToChat: "すべてチャットに追加",
           addingToChat: "追加中...",
+          reply: "返信",
+          sendingReply: "送信中…",
         },
         checksOverview: {
           headline: {
@@ -1091,6 +1093,7 @@ export const ja: TranslationResources = {
         errors: {
           statusLoadFailed: "プルリクエストのステータスを読み込めません",
           activityLoadFailed: "プルリクエストのアクティビティを読み込めません",
+          replyFailed: "返信を投稿できません",
         },
       },
       forgeSetup: {

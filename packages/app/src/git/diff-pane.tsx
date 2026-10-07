@@ -90,6 +90,7 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { isWeb } from "@/constants/platform";
 import { usePublishWorkingDiffAttachment, useWorkingDiff } from "@/git/use-working-diff";
+import { usePrInlineReview } from "@/git/pull-request-panel/use-pr-inline-review";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { DiffTooLargeState } from "@/git/diff-too-large-state";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
@@ -1435,6 +1436,14 @@ function useDiffTabNavigation({
   };
 }
 
+function prInlineReviewEnabled(input: {
+  enabled?: boolean;
+  isGit: boolean;
+  diffMode: "uncommitted" | "base";
+}): boolean {
+  return input.enabled !== false && input.isGit && input.diffMode === "base";
+}
+
 export function ChangesSurface({
   serverId,
   workspaceId,
@@ -1561,6 +1570,13 @@ export function ChangesSurface({
     cwd,
     attachment: reviewAttachment,
     enabled: true,
+  });
+  // Forge PR comment threads render inline only against the base diff (which matches
+  // the PR's cumulative changes); the uncommitted diff is local work the PR hasn't seen.
+  const prReviewActions = usePrInlineReview({
+    serverId,
+    cwd,
+    enabled: prInlineReviewEnabled({ enabled, isGit, diffMode }),
   });
   const {
     status: pullRequestStatus,
@@ -1695,6 +1711,7 @@ export function ChangesSurface({
     () => ({
       kind: "working" as const,
       reviewActions,
+      prReviewActions,
       focusPath: documentFocusRequest?.path,
       focusRequestId: documentFocusRequest?.revision,
       workspaceFileDragScope: workspaceId ? { serverId, workspaceId } : undefined,
@@ -1711,6 +1728,7 @@ export function ChangesSurface({
     }),
     [
       reviewActions,
+      prReviewActions,
       documentFocusRequest?.path,
       documentFocusRequest?.revision,
       serverId,

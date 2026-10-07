@@ -73,6 +73,12 @@ import {
   type PrThreadEntry,
   type PrTimelineEntry,
 } from "./timeline";
+import { PrReplyComposer } from "./reply-composer";
+import {
+  type PrReplyTarget,
+  useReplyToPrComment,
+  type UseReplyToPrCommentResult,
+} from "./use-reply-to-comment";
 import {
   Section,
   SummaryPill,
@@ -220,6 +226,15 @@ export function PullRequestPane({
   );
   const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
     (state) => state.addWorkspaceAttachment,
+  );
+  const replyController = useReplyToPrComment({ serverId, cwd });
+  const replyContext = useMemo(
+    () => ({
+      prNumber: data.number,
+      ...(data.repoOwner ? { repoOwner: data.repoOwner } : {}),
+      ...(data.repoName ? { repoName: data.repoName } : {}),
+    }),
+    [data.number, data.repoName, data.repoOwner],
   );
   const [checksOpen, setChecksOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
@@ -612,6 +627,8 @@ export function PullRequestPane({
                   onAddToChat={handleAddActivityToChat}
                   onAddThreadToChat={handleAddThreadToChat}
                   onToggleCollapsed={handleToggleEntryCollapsed}
+                  replyController={replyController}
+                  replyContext={replyContext}
                 />
               ))
             : null}
@@ -634,6 +651,31 @@ interface TimelineEntryCallbacks {
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
+  replyController: UseReplyToPrCommentResult;
+  replyContext: { prNumber: number; repoOwner?: string; repoName?: string };
+}
+
+/** Builds the forge-neutral reply target for a thread from the PR context. */
+function buildThreadReplyTarget(
+  thread: PrThreadEntry,
+  context: { prNumber: number; repoOwner?: string; repoName?: string },
+): PrReplyTarget {
+  const root = thread.comments[0];
+  const threadId = root?.location?.threadId ?? root?.threadId;
+  return {
+    prNumber: context.prNumber,
+    ...(context.repoOwner ? { repoOwner: context.repoOwner } : {}),
+    ...(context.repoName ? { repoName: context.repoName } : {}),
+    ...(threadId ? { threadId } : {}),
+    ...(thread.location
+      ? {
+          location: {
+            path: thread.location.path,
+            ...(thread.location.line ? { line: thread.location.line } : {}),
+          },
+        }
+      : { isGeneralDiscussion: true }),
+  };
 }
 
 function TimelineEntryCard({
@@ -904,6 +946,8 @@ function ThreadCard({
   onAddToChat,
   onAddThreadToChat,
   onToggleCollapsed,
+  replyController,
+  replyContext,
 }: TimelineEntryCallbacks & {
   entry: PrThreadEntry;
   collapsed: boolean;
@@ -918,6 +962,8 @@ function ThreadCard({
         onAddToChat={onAddToChat}
         onAddThreadToChat={onAddThreadToChat}
         onToggleCollapsed={onToggleCollapsed}
+        replyController={replyController}
+        replyContext={replyContext}
       />
     </View>
   );
@@ -932,6 +978,8 @@ function ReviewCard({
   onAddToChat,
   onAddThreadToChat,
   onToggleCollapsed,
+  replyController,
+  replyContext,
 }: TimelineEntryCallbacks & {
   entry: PrReviewEntry;
   collapsed: boolean;
@@ -1014,6 +1062,8 @@ function ReviewCard({
                     onAddToChat={onAddToChat}
                     onAddThreadToChat={onAddThreadToChat}
                     onToggleCollapsed={onToggleCollapsed}
+                    replyController={replyController}
+                    replyContext={replyContext}
                   />
                 </View>
               ))}
@@ -1033,6 +1083,8 @@ function ThreadBlock({
   onAddToChat,
   onAddThreadToChat,
   onToggleCollapsed,
+  replyController,
+  replyContext,
 }: {
   thread: PrThreadEntry;
   collapsed: boolean;
@@ -1041,6 +1093,8 @@ function ThreadBlock({
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
+  replyController: UseReplyToPrCommentResult;
+  replyContext: { prNumber: number; repoOwner?: string; repoName?: string };
 }) {
   const { t } = useTranslation();
   const { actionsVisible, handlePointerEnter, handlePointerLeave, setMenuOpen } =
@@ -1055,6 +1109,11 @@ function ThreadBlock({
   const handleOpenThread = useCallback(() => {
     void openExternalUrl(thread.comments[0].url);
   }, [thread.comments]);
+  const handleReply = useCallback(
+    (body: string) =>
+      replyController.reply({ target: buildThreadReplyTarget(thread, replyContext), body }),
+    [replyController, replyContext, thread],
+  );
 
   const [root, ...replies] = thread.comments;
 
@@ -1133,6 +1192,11 @@ function ThreadBlock({
               >
                 {t("workspace.git.pr.actions.addToChat")}
               </Button>
+            </View>
+          ) : null}
+          {replyController.enabled ? (
+            <View style={styles.cardFooter}>
+              <PrReplyComposer onSubmit={handleReply} testID={`pr-thread-reply-${thread.id}`} />
             </View>
           ) : null}
         </>

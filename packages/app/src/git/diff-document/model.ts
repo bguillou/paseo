@@ -8,6 +8,11 @@ import {
 } from "@/utils/diff-layout";
 import { compactHighlightTokens } from "@/utils/diff-rendering";
 import { getInlineReviewThreadState, getSplitInlineReviewThreadState } from "@/review/geometry";
+import {
+  getPrInlineThreadState,
+  getSplitPrInlineThreadState,
+  prInlineGeometryKey,
+} from "./pr-inline";
 import { advancesFor, requiresShaping } from "./text-measurement";
 import type {
   BuildDiffDocumentModelInput,
@@ -40,6 +45,7 @@ interface CellSource {
 interface GeometryLine {
   cells: DiffLineRow["cells"];
   reviewHeight: number;
+  prReviewHeight: number;
   height: number;
 }
 
@@ -63,7 +69,9 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
   const rows: DiffRow[] = [];
   const files: DiffFileSection[] = [];
   const reusableModels = indexReusableModels(input.reuseFrom);
-  const currentReviewGeometryKey = reviewGeometryKey(input.reviewActions);
+  const currentReviewGeometryKey = `${reviewGeometryKey(input.reviewActions)}|${prInlineGeometryKey(
+    input.prReviewActions,
+  )}`;
   let documentTop = 0;
 
   for (const [fileIndex, file] of input.files.entries()) {
@@ -197,7 +205,8 @@ function repositionReusedRow(
   if (row.kind !== "line") {
     return { ...row, index: candidate.rows.length, fileIndex: candidate.fileIndex, top };
   }
-  const reviewHeight = reviewHeightForCells(row.cells, candidate.input);
+  const prReviewHeight = prReviewHeightForCells(row.cells, candidate.input);
+  const reviewHeight = reviewHeightForCells(row.cells, candidate.input) + prReviewHeight;
   return {
     ...row,
     index: candidate.rows.length,
@@ -205,6 +214,7 @@ function repositionReusedRow(
     top,
     height: row.height - row.reviewHeight + reviewHeight,
     reviewHeight,
+    prReviewHeight,
   };
 }
 
@@ -285,6 +295,7 @@ function appendNewFileRows(candidate: {
       height,
       cells,
       reviewHeight: line.reviewHeight,
+      prReviewHeight: line.prReviewHeight,
     });
     top += height;
   }
@@ -432,10 +443,12 @@ function geometryLines(
     const cells = sourceCells.map((source) =>
       source ? geometryCell(source) : null,
     ) as DiffLineRow["cells"];
-    const reviewHeight = reviewHeightForCells(cells, input);
+    const prReviewHeight = prReviewHeightForCells(cells, input);
+    const reviewHeight = reviewHeightForCells(cells, input) + prReviewHeight;
     return {
       cells,
       reviewHeight,
+      prReviewHeight,
       height: input.typography.lineHeight + reviewHeight,
     };
   });
@@ -728,6 +741,27 @@ function reviewHeightForCells(
     getInlineReviewThreadState({
       reviewTarget: cells[0]?.reviewTarget,
       reviewActions: input.reviewActions,
+    })?.height ?? 0
+  );
+}
+
+function prReviewHeightForCells(
+  cells: DiffLineRow["cells"],
+  input: BuildDiffDocumentModelInput,
+): number {
+  if (cells.length === 2) {
+    return (
+      getSplitPrInlineThreadState({
+        left: cells[0]?.reviewTarget,
+        right: cells[1]?.reviewTarget,
+        prReviewActions: input.prReviewActions,
+      })?.height ?? 0
+    );
+  }
+  return (
+    getPrInlineThreadState({
+      reviewTarget: cells[0]?.reviewTarget,
+      prReviewActions: input.prReviewActions,
     })?.height ?? 0
   );
 }

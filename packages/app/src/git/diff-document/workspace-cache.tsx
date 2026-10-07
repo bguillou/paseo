@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import invariant from "tiny-invariant";
 import { buildDiffDocumentModel, retainReusableModels, reviewGeometryKey } from "./model";
+import { prInlineGeometryKey } from "./pr-inline";
 import type {
   BuildDiffDocumentModelInput,
   DiffDocumentModel,
@@ -124,7 +125,9 @@ function modelVariantKey(input: Omit<BuildDiffDocumentModelInput, "reuseFrom">):
 
 function exactModelKey(input: Omit<BuildDiffDocumentModelInput, "reuseFrom">): string {
   const collapsedFilePaths = [...input.collapsedFilePaths].sort();
-  const reviewGeometry = reviewGeometryKey(input.reviewActions);
+  const reviewGeometry = `${reviewGeometryKey(input.reviewActions)}|${prInlineGeometryKey(
+    input.prReviewActions,
+  )}`;
   const materializationWindow = input.materializationWindow
     ? [input.materializationWindow.top, input.materializationWindow.height]
     : null;

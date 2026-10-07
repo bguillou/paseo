@@ -1,5 +1,13 @@
 import { Canvas, Group, Picture, type SkPicture } from "@shopify/react-native-skia";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   ScrollView,
@@ -20,6 +28,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { InlineReviewThread } from "@/review";
+import { PrInlineThread } from "./pr-inline-thread";
 import { useKeyboardShift } from "@/keyboard/shift";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { DocumentFileHeader } from "./document-file-header";
@@ -108,6 +117,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     [family, typography.size],
   );
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
+  const prReviewActions = props.mode.kind === "working" ? props.mode.prReviewActions : undefined;
   const model = useMemo(() => {
     const dependencies = [
       props.displayPreferences.layout,
@@ -133,6 +143,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       measureText: measurement,
       palette: props.palette,
       reviewActions,
+      prReviewActions,
       labels: {
         binary: t("workspace.git.diff.binaryFile"),
         tooLarge: t("workspace.git.diff.tooLarge"),
@@ -154,6 +165,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     props.files,
     props.palette,
     reviewActions,
+    prReviewActions,
     t,
     typography,
     viewport.width,
@@ -506,41 +518,76 @@ function NativeReviewOverlays({
   model: DiffDocumentModel;
   mode: DiffSurfaceProps["mode"];
 }) {
-  if (mode.kind !== "working" || !mode.reviewActions) return null;
+  if (mode.kind !== "working") return null;
   const reviewActions = mode.reviewActions;
+  const prReviewActions = mode.prReviewActions;
+  if (!reviewActions && !prReviewActions) return null;
   return model.rows.flatMap((row) => {
     if (row.kind !== "line" || row.reviewHeight === 0) return [];
     const columnWidth = model.viewportWidth / row.cells.length;
+    const draftHeight = row.reviewHeight - row.prReviewHeight;
     return row.cells.flatMap((cell, index) => {
       if (!cell?.reviewTarget) return [];
-      const comments = reviewActions.commentsByTarget.get(cell.reviewTarget.key) ?? [];
-      const editor = reviewActions.editor;
-      const hasEditor =
-        editor?.target.filePath === cell.reviewTarget.filePath &&
-        editor.target.side === cell.reviewTarget.side &&
-        editor.target.lineNumber === cell.reviewTarget.lineNumber;
-      if (comments.length === 0 && !hasEditor) return [];
-      return [
-        <View
-          key={cell.reviewTarget.key}
-          style={inlineUnistylesStyle<ViewStyle>({
-            position: "absolute",
-            top: row.top + row.height - row.reviewHeight,
-            left: index * columnWidth,
-            width: columnWidth,
-            height: row.reviewHeight,
-            zIndex: 6,
-          })}
-        >
-          <InlineReviewThread
-            reviewTarget={cell.reviewTarget}
-            reviewActions={reviewActions}
-            height={row.reviewHeight}
-            viewportWidth={columnWidth}
-            pinToViewport={!model.wrapLines}
-          />
-        </View>,
-      ];
+      const target = cell.reviewTarget;
+      const overlays: ReactNode[] = [];
+      if (reviewActions && draftHeight > 0) {
+        const comments = reviewActions.commentsByTarget.get(target.key) ?? [];
+        const editor = reviewActions.editor;
+        const hasEditor =
+          editor?.target.filePath === target.filePath &&
+          editor.target.side === target.side &&
+          editor.target.lineNumber === target.lineNumber;
+        if (comments.length > 0 || hasEditor) {
+          overlays.push(
+            <View
+              key={`draft:${target.key}`}
+              style={inlineUnistylesStyle<ViewStyle>({
+                position: "absolute",
+                top: row.top + row.height - row.reviewHeight,
+                left: index * columnWidth,
+                width: columnWidth,
+                height: draftHeight,
+                zIndex: 6,
+              })}
+            >
+              <InlineReviewThread
+                reviewTarget={target}
+                reviewActions={reviewActions}
+                height={draftHeight}
+                viewportWidth={columnWidth}
+                pinToViewport={!model.wrapLines}
+              />
+            </View>,
+          );
+        }
+      }
+      if (prReviewActions && row.prReviewHeight > 0) {
+        const threads = prReviewActions.threadsByTarget.get(target.key);
+        if (threads && threads.length > 0) {
+          overlays.push(
+            <View
+              key={`pr:${target.key}`}
+              style={inlineUnistylesStyle<ViewStyle>({
+                position: "absolute",
+                top: row.top + row.height - row.prReviewHeight,
+                left: index * columnWidth,
+                width: columnWidth,
+                height: row.prReviewHeight,
+                zIndex: 6,
+              })}
+            >
+              <PrInlineThread
+                threads={threads}
+                actions={prReviewActions}
+                height={row.prReviewHeight}
+                viewportWidth={columnWidth}
+                pinToViewport={!model.wrapLines}
+              />
+            </View>,
+          );
+        }
+      }
+      return overlays;
     });
   });
 }

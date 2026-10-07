@@ -406,6 +406,7 @@ function createSelectionModel(layout: "unified" | "split"): DiffDocumentModel {
         top: 0,
         height: 18,
         reviewHeight: 0,
+        prReviewHeight: 0,
         cells,
       },
     ],
@@ -501,6 +502,7 @@ const model: DiffDocumentModel = {
       top: 0,
       height: 18,
       reviewHeight: 0,
+      prReviewHeight: 0,
       cells: [
         {
           type: "add",

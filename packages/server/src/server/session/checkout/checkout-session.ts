@@ -1180,6 +1180,52 @@ export class CheckoutSession {
     }
   }
 
+  async handleCheckoutForgeReplyCommentRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.forge.reply_comment.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const responseType = "checkout.forge.reply_comment.response" as const;
+    try {
+      const { service } = await this.requireForgeService(cwd);
+      if (!service.replyToComment) {
+        throw new Error("This forge does not support replying to comments");
+      }
+      const result = await service.replyToComment({
+        cwd,
+        prNumber: msg.prNumber,
+        body: msg.body,
+        ...(msg.repoOwner ? { repoOwner: msg.repoOwner } : {}),
+        ...(msg.repoName ? { repoName: msg.repoName } : {}),
+        ...(msg.threadId ? { threadId: msg.threadId } : {}),
+        ...(msg.isGeneralDiscussion ? { isGeneralDiscussion: msg.isGeneralDiscussion } : {}),
+        ...(msg.location ? { location: msg.location } : {}),
+      });
+      // Refresh the forge timeline so the new reply appears without a manual reload.
+      await this.gitMutation.notifyGitMutation(cwd, "reply-comment", { invalidateForge: true });
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: true,
+          url: result.url ?? null,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: false,
+          url: null,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
   private async resolveCurrentPullRequest(
     cwd: string,
     operation: "merge" | "auto-merge",

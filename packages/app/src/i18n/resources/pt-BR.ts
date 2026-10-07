@@ -1001,6 +1001,8 @@ export const ptBR: TranslationResources = {
           addToChat: "Adicionar ao chat",
           addAllToChat: "Adicionar tudo ao chat",
           addingToChat: "Adicionando...",
+          reply: "Responder",
+          sendingReply: "Enviando…",
         },
         checksOverview: {
           headline: {
@@ -1101,6 +1103,7 @@ export const ptBR: TranslationResources = {
         errors: {
           statusLoadFailed: "Não foi possível carregar o status da pull request",
           activityLoadFailed: "Não foi possível carregar a atividade da pull request",
+          replyFailed: "Não foi possível publicar a resposta",
         },
       },
       forgeSetup: {

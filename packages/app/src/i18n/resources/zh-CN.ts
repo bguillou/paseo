@@ -970,6 +970,8 @@ export const zhCN: TranslationResources = {
           addToChat: "添加到聊天",
           addAllToChat: "全部添加到聊天",
           addingToChat: "正在添加...",
+          reply: "回复",
+          sendingReply: "正在发送…",
         },
         checksOverview: {
           headline: {
@@ -1070,6 +1072,7 @@ export const zhCN: TranslationResources = {
         errors: {
           statusLoadFailed: "无法加载 Pull Request 状态",
           activityLoadFailed: "无法加载 Pull Request 活动",
+          replyFailed: "无法发布回复",
         },
       },
       forgeSetup: {

@@ -52,6 +52,8 @@ import type {
   PullRequestTimelineReviewState,
   PullRequestCheck,
   PullRequestCheckoutTarget,
+  ReplyToCommentOptions,
+  ReplyToCommentResult,
   SearchIssuesAndPrsOptions,
   SearchResult,
 } from "./forge-service.js";
@@ -984,6 +986,18 @@ function parseGiteaRepoFromUrl(url: string): { owner?: string; name?: string } {
     // fall through
   }
   return {};
+}
+
+const GiteaCommentReplySchema = z.object({ html_url: z.string().optional() });
+
+/** Best-effort parse of the comment tea returns after a POST; a reply that lands
+ * but returns unparseable output still counts as a success (just no URL). */
+function safeParseGiteaCommentReply(stdout: string): { html_url?: string } | null {
+  try {
+    return GiteaCommentReplySchema.parse(JSON.parse(stdout));
+  } catch {
+    return null;
+  }
 }
 
 function currentPullRequestApiToListItem(item: GiteaCurrentPullRequestApi): GiteaPrListItem {
@@ -2073,6 +2087,35 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
       const args = ["pr", "merge", String(input.prNumber), "--style", input.mergeMethod];
       await run(args, { cwd: input.cwd });
       return { success: true };
+    },
+
+    async replyToComment(input: ReplyToCommentOptions): Promise<ReplyToCommentResult> {
+      // Gitea/Forgejo expose no stable review-thread id (the timeline synthesizes
+      // one from path:line), so there is no "reply into this thread" endpoint to
+      // call. A reply degrades to a new top-level PR comment; when the source was a
+      // file thread, the file:line is quoted so the context is not lost.
+      if (!input.repoOwner || !input.repoName) {
+        throw new Error("Gitea comment reply requires repoOwner and repoName");
+      }
+      const owner = encodeURIComponent(input.repoOwner);
+      const repo = encodeURIComponent(input.repoName);
+      const prefix = input.location
+        ? `> \`${input.location.path}${input.location.line ? `:${input.location.line}` : ""}\`\n\n`
+        : "";
+      const payload = JSON.stringify({ body: `${prefix}${input.body}` });
+      const stdout = await run(
+        [
+          "api",
+          "--method",
+          "POST",
+          "--data",
+          payload,
+          `repos/${owner}/${repo}/issues/${input.prNumber}/comments`,
+        ],
+        { cwd: input.cwd },
+      );
+      const parsed = safeParseGiteaCommentReply(stdout);
+      return parsed?.html_url ? { url: parsed.html_url } : {};
     },
 
     async getPullRequestTimeline(
