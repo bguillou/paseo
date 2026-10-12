@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Text, View } from "react-native";
 import { GitPullRequest } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
@@ -46,10 +47,24 @@ function usePullRequestPanelDescriptor(
 
 function PullRequestPanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, target } = usePaneContext();
+  const { serverId, workspaceId, target, openPreferredTarget } = usePaneContext();
   const cwd = useWorkspaceDirectory(serverId, workspaceId) ?? "";
   invariant(target.kind === "pull_request", "PullRequestPanel requires pull_request target");
   const prPane = usePullRequestData({ serverId, cwd });
+  // Opens the working diff scrolled to a comment's file + line (jump-to-inline).
+  const handleOpenInDiff = useCallback(
+    (location: { path: string; line: number }) =>
+      openPreferredTarget(
+        {
+          kind: "working_diff",
+          focusPath: location.path,
+          focusLine: location.line,
+          focusRequestId: Date.now(),
+        },
+        "diffs",
+      ),
+    [openPreferredTarget],
+  );
   if (!cwd) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
@@ -58,7 +73,13 @@ function PullRequestPanel() {
     );
   }
   return (
-    <PullRequestContent serverId={serverId} workspaceId={workspaceId} cwd={cwd} prPane={prPane} />
+    <PullRequestContent
+      serverId={serverId}
+      workspaceId={workspaceId}
+      cwd={cwd}
+      prPane={prPane}
+      onOpenInDiff={handleOpenInDiff}
+    />
   );
 }
 

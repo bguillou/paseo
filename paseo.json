@@ -1,5 +1,6 @@
 {
   "worktree": {
+    "portBase": 55000,
     "setup": [
       "npm ci",
       "node ./scripts/seed-ios-native-cache.mjs",
@@ -11,19 +12,20 @@
   "scripts": {
     "daemon": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_SKIP_DEV_SERVER_BUILD=1 PASEO_LISTEN=0.0.0.0:${PASEO_PORT:-6768} ./scripts/dev-daemon.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_SKIP_DEV_SERVER_BUILD=1 PASEO_LISTEN=0.0.0.0:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) ./scripts/dev-daemon.sh"
     },
     "app": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} ./scripts/dev-app.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) PASEO_DEV_DAEMON_ENDPOINT=localhost:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) EXPO_PORT=${PASEO_WORKTREE_PORT:-} ./scripts/dev-app.sh",
+      "previewUrl": "http://localhost:$PASEO_WORKTREE_PORT"
     },
     "desktop": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT:-6768} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${PASEO_PORT:-} exec ./packages/desktop/scripts/dev.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"${PASEO_WORKTREE_PATH:-$PWD}\" PASEO_HOME=\"${PASEO_WORKTREE_PATH:-$PWD}/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) PASEO_DEV_DAEMON_ENDPOINT=localhost:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) EXPO_PORT=$(( ${PASEO_WORKTREE_PORT:-6768} + 2 )) exec ./packages/desktop/scripts/dev.sh"
     },
     "ios-simulator": {
       "type": "service",
-      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"$PWD\" PASEO_HOME=\"$PWD/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:${PASEO_SERVICE_DAEMON_PORT} PASEO_DEV_DAEMON_ENDPOINT=localhost:${PASEO_SERVICE_DAEMON_PORT} ./scripts/paseo-ios-simulator-service.sh"
+      "command": "PASEO_DEV_MANAGED_HOME=1 PASEO_DEV_ROOT=\"$PWD\" PASEO_HOME=\"$PWD/.dev/paseo-home\" PASEO_LISTEN=0.0.0.0:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) PASEO_DEV_DAEMON_ENDPOINT=localhost:$(( ${PASEO_WORKTREE_PORT:-6768} + 1 )) ./scripts/paseo-ios-simulator-service.sh"
     },
     "typecheck": {
       "command": "npm run typecheck"

@@ -60,6 +60,46 @@ describe("buildScheduleProjectTargets", () => {
     ]);
     expect(targets).toHaveLength(0);
   });
+
+  it("exposes active worktree workspaces and skips non-worktree or archiving ones", () => {
+    const targets = buildScheduleProjectTargets([
+      makeProject({
+        hosts: [
+          makeHost({
+            workspaces: [
+              {
+                id: "ws-1",
+                name: "feature/login",
+                workspaceKind: "worktree",
+                status: "done",
+                currentBranch: "feature/login",
+                changeRequestNumber: null,
+              },
+              {
+                id: "ws-2",
+                name: "archiving",
+                workspaceKind: "worktree",
+                status: "done",
+                currentBranch: null,
+                archivingAt: "2026-01-01T00:00:00.000Z",
+                changeRequestNumber: null,
+              },
+              {
+                id: "ws-3",
+                name: "main checkout",
+                workspaceKind: "directory",
+                status: "done",
+                currentBranch: null,
+                changeRequestNumber: null,
+              },
+            ],
+          }),
+        ],
+      }),
+    ]);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.worktrees).toEqual([{ workspaceId: "ws-1", label: "feature/login" }]);
+  });
 });
 
 describe("describeScheduleCwd", () => {

@@ -1,10 +1,7 @@
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import type {
-  AgentForkContextOptions,
-  DaemonClient,
-} from "@getpaseo/client/internal/daemon-client";
-import type { WorkspaceComposerAttachment } from "@/attachments/types";
+import type { AgentForkContextOptions } from "@getpaseo/client/internal/daemon-client";
+import { buildChatHistoryAttachment } from "@/attachments/chat-history";
 import type { AssistantForkTarget } from "@/components/assistant-fork-menu";
 import type { ToastApi } from "@/components/toast-host";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
@@ -66,30 +63,6 @@ export interface UseForkAgentInput {
   readOnly?: boolean;
 }
 
-function buildChatHistoryAttachment(input: {
-  draftId: string;
-  serverId: string;
-  agentId: string;
-  payload: Awaited<ReturnType<DaemonClient["buildAgentForkContext"]>>;
-  missingAttachmentMessage: string;
-}): WorkspaceComposerAttachment {
-  if (!input.payload.attachment) {
-    throw new Error(input.missingAttachmentMessage);
-  }
-  return {
-    kind: "chat_history",
-    id: `chat_history:${input.draftId}`,
-    attachment: input.payload.attachment,
-    source: {
-      serverId: input.serverId,
-      agentId: input.agentId,
-      boundaryMessageId: input.payload.boundaryMessageId,
-      boundaryCursor: input.payload.boundaryCursor,
-      itemCount: input.payload.itemCount,
-    },
-  };
-}
-
 function buildForkDraftSetup(agent: ForkAgentSource): WorkspaceDraftTabSetup | undefined {
   if (!agent.provider) {
     return undefined;
@@ -146,12 +119,14 @@ export function useForkAgent(
         const draftId = generateDraftId();
         const payload = await client.buildAgentForkContext(agentId, boundary);
         const attachment = buildChatHistoryAttachment({
-          draftId,
+          id: `chat_history:${draftId}`,
           serverId,
           agentId,
           payload,
-          missingAttachmentMessage: t("message.actions.forkFailed"),
         });
+        if (!attachment) {
+          throw new Error(t("message.actions.forkFailed"));
+        }
         useWorkspaceAttachmentsStore.getState().setWorkspaceAttachments({
           scopeKey: buildDraftWorkspaceAttachmentScopeKey(draftId),
           attachments: [attachment],

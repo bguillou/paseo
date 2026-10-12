@@ -89,12 +89,16 @@ import {
   PaseoWorktreeConfigRawSchema,
   PaseoConfigRevisionSchema,
   ProjectConfigRpcErrorSchema,
+  ProjectConfigSourceSchema,
+  ProjectConfigTargetSchema,
   type PaseoConfigRaw,
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
+  type ProjectConfigSource,
+  type ProjectConfigTarget,
 } from "./paseo-config-schema.js";
 export {
   PaseoConfigRawSchema,
@@ -103,12 +107,16 @@ export {
   PaseoMetadataGenerationSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
+  ProjectConfigSourceSchema,
+  ProjectConfigTargetSchema,
   type PaseoConfigRaw,
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
+  type ProjectConfigSource,
+  type ProjectConfigTarget,
 };
 // ---------------------------------------------------------------------------
 // Mutable daemon config schemas (shared between server store and client)
@@ -1116,7 +1124,7 @@ export const TextAttachmentSchema = z
   })
   .transform(({ contextKind, ...attachment }) => ({
     ...attachment,
-    ...(contextKind === "chat_history" ? { contextKind } : {}),
+    ...(contextKind === "chat_history" || contextKind === "plan" ? { contextKind } : {}),
   }));
 
 export const ReviewAttachmentContextLineSchema = z.object({
@@ -1617,6 +1625,10 @@ export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
+  // COMPAT(projectGlobalConfig): added in v0.9.0; omitted means "project_file"
+  // so older clients keep reading the committed paseo.json. Remove the optional
+  // gate after 2027-10-07.
+  source: ProjectConfigSourceSchema.optional(),
 });
 
 export const WriteProjectConfigRequestMessageSchema = z.object({
@@ -1625,6 +1637,21 @@ export const WriteProjectConfigRequestMessageSchema = z.object({
   repoRoot: z.string(),
   config: PaseoConfigRawSchema,
   expectedRevision: PaseoConfigRevisionSchema.nullable(),
+  // COMPAT(projectGlobalConfig): added in v0.9.0; omitted means "project_file".
+  // Remove the optional gate after 2027-10-07.
+  target: ProjectConfigTargetSchema.optional(),
+});
+
+export const MigrateProjectConfigToGlobalRequestMessageSchema = z.object({
+  type: z.literal("project.config.migrateToGlobal.request"),
+  requestId: z.string(),
+  repoRoot: z.string(),
+});
+
+export const DeleteProjectConfigFileRequestMessageSchema = z.object({
+  type: z.literal("project.config.deleteProjectFile.request"),
+  requestId: z.string(),
+  repoRoot: z.string(),
 });
 
 // ============================================================================
@@ -1901,6 +1928,17 @@ export const AgentForkContextRequestMessageSchema = z.object({
   agentId: z.string(),
   boundaryCursor: AgentTimelineCursorSchema.optional(),
   boundaryMessageId: z.string().optional(),
+  requestId: z.string(),
+});
+
+// Lists the plans created by agents in a single worktree so the composer can
+// attach one as context. Scoped to one workspace: pass `workspaceId` when known,
+// else `cwd` and the daemon resolves the enclosing workspace. Mirrors the
+// fork-context flow but discovers plans (which are sparse) server-side.
+export const AgentPlansListRequestMessageSchema = z.object({
+  type: z.literal("agent.plans.list.request"),
+  workspaceId: z.string().optional(),
+  cwd: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -2303,6 +2341,39 @@ export const CheckoutForgeReplyCommentRequestSchema = z.object({
       line: z.number().optional(),
     })
     .optional(),
+  requestId: z.string(),
+});
+
+// Resolves or unresolves a pull-request review thread on the forge. Forge-neutral:
+// GitHub and GitLab resolve by opaque thread/discussion id. Gated on
+// server_info.features.checkoutForgeResolveThread.
+export const CheckoutForgeResolveThreadRequestSchema = z.object({
+  type: z.literal("checkout.forge.resolve_thread.request"),
+  cwd: z.string(),
+  prNumber: z.number(),
+  // Opaque forge thread/discussion id from the timeline.
+  threadId: z.string(),
+  // True to resolve the thread, false to reopen (unresolve) it.
+  resolved: z.boolean(),
+  // Repo identity from the PR panel, for adapters that can't resolve the slug from
+  // the cwd remote. Optional: GitHub resolves from origin, GitLab uses :fullpath.
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
+  requestId: z.string(),
+});
+
+// Re-requests a review from a reviewer already on the pull request. Forge-neutral:
+// GitHub re-requests by login. Gated on server_info.features.checkoutForgeRequestReview.
+export const CheckoutForgeRequestReviewRequestSchema = z.object({
+  type: z.literal("checkout.forge.request_review.request"),
+  cwd: z.string(),
+  prNumber: z.number(),
+  // Login of the reviewer to (re-)request a review from.
+  reviewerLogin: z.string(),
+  // Repo identity from the PR panel, for adapters that can't resolve the slug from
+  // the cwd remote. Optional: GitHub resolves from origin, GitLab uses :fullpath.
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -3279,6 +3350,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigRequestMessageSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
+  MigrateProjectConfigToGlobalRequestMessageSchema,
+  DeleteProjectConfigFileRequestMessageSchema,
   DictationStreamStartMessageSchema,
   DictationStreamChunkMessageSchema,
   DictationStreamFinishMessageSchema,
@@ -3307,6 +3380,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderSubagentTimelineRequestMessageSchema,
   SetAgentTimelineSubscriptionRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
+  AgentPlansListRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -3331,6 +3405,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeSetAutoMergeRequestSchema,
   CheckoutGithubSetAutoMergeRequestSchema,
   CheckoutForgeReplyCommentRequestSchema,
+  CheckoutForgeResolveThreadRequestSchema,
+  CheckoutForgeRequestReviewRequestSchema,
   CheckoutCommitsListRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
@@ -3616,6 +3692,10 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutForgeSetAutoMerge: z.boolean().optional(),
         // COMPAT(checkoutForgeReplyComment): added in v0.9.0, remove gate after 2027-10-07.
         checkoutForgeReplyComment: z.boolean().optional(),
+        // COMPAT(checkoutForgeResolveThread): added in v0.9.0, remove gate after 2027-10-07.
+        checkoutForgeResolveThread: z.boolean().optional(),
+        // COMPAT(checkoutForgeRequestReview): added in v0.11.0, remove gate after 2027-10-08.
+        checkoutForgeRequestReview: z.boolean().optional(),
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising and
         // consuming it after 2027-01-17 once supported floors are >= v0.2.0.
@@ -3676,6 +3756,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
+        // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+        scheduleExistingWorktree: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -3700,6 +3782,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: z.boolean().optional(),
+        // COMPAT(agentPlanContext): added in v0.11.0, remove gate after 2027-04-09.
+        agentPlanContext: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
         // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain wire field.
@@ -3720,6 +3804,10 @@ export const ServerInfoStatusPayloadSchema = z
         projectCreateDirectory: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: z.boolean().optional(),
+        // COMPAT(projectGlobalConfig): added in v0.9.0; gates reading/writing a
+        // project's config at the user/global layer, the migrate-to-global RPC,
+        // and deleting the committed paseo.json. Remove gate after 2027-10-07.
+        projectGlobalConfig: z.boolean().optional(),
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
         commitsList: z.boolean().optional(),
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
@@ -3962,6 +4050,14 @@ export const WorkspaceScriptPayloadSchema = z.object({
   localProxyUrl: z.string().nullable().optional(),
   publicProxyUrl: z.string().nullable().optional(),
   proxyUrl: z.string().nullable().optional().default(null),
+  // COMPAT(serviceScriptPreviewUrl): added in v0.9.0; config-set override for the
+  // preview URL (may contain a `$PASEO_PORT` placeholder). Remove optional gate
+  // after 2027-10-08.
+  previewUrl: z.string().nullable().optional(),
+  // COMPAT(serviceScriptWorktreePort): added in v0.11.0; the deterministic
+  // per-worktree base port, so a config-set previewUrl can resolve the
+  // `$PASEO_WORKTREE_PORT` placeholder. Remove optional gate after 2027-10-09.
+  worktreePort: z.number().int().positive().nullable().optional(),
   lifecycle: WorkspaceScriptLifecycleSchema,
   health: WorkspaceScriptHealthSchema.nullable(),
   exitCode: z.number().nullable().optional().default(null),
@@ -4858,6 +4954,29 @@ export const AgentForkContextResponseMessageSchema = z.object({
   }),
 });
 
+// One plan produced by an agent, already wrapped as a text attachment ready to
+// submit. `planKey` identifies the plan within its source agent (stable across
+// list calls) and combines with `agentId` for composer dedup.
+export const AgentPlanEntrySchema = z.object({
+  agentId: z.string(),
+  agentTitle: z.string().nullable(),
+  cwd: z.string().nullable(),
+  planKey: z.string(),
+  createdAt: z.number(),
+  outcome: z.enum(["pending", "approved", "rejected", "canceled"]),
+  summary: z.string().nullable(),
+  attachment: TextAttachmentSchema,
+});
+
+export const AgentPlansListResponseMessageSchema = z.object({
+  type: z.literal("agent.plans.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    plans: z.array(AgentPlanEntrySchema),
+    error: z.string().nullable(),
+  }),
+});
+
 export const CancelAgentResponseMessageSchema = z.object({
   type: z.literal("cancel_agent_response"),
   payload: z.object({
@@ -5128,6 +5247,9 @@ export const ReadProjectConfigResponseMessageSchema = z.object({
       config: PaseoConfigRawSchema.nullable(),
       revision: PaseoConfigRevisionSchema.nullable(),
       hasUncommittedWorktreeSetupChanges: z.boolean().optional(),
+      // COMPAT(projectGlobalConfig): added in v0.9.0; echoes which layer the
+      // daemon read from. Remove the optional gate after 2027-10-07.
+      source: ProjectConfigSourceSchema.optional(),
     }),
     z.object({
       requestId: z.string(),
@@ -5150,6 +5272,50 @@ export const WriteProjectConfigResponseMessageSchema = z.object({
       config: PaseoConfigRawSchema,
       revision: PaseoConfigRevisionSchema,
       hasUncommittedWorktreeSetupChanges: z.boolean().optional(),
+      // COMPAT(projectGlobalConfig): added in v0.9.0; echoes the layer written.
+      // Remove the optional gate after 2027-10-07.
+      source: ProjectConfigSourceSchema.optional(),
+    }),
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(false),
+      error: ProjectConfigRpcErrorSchema,
+    }),
+  ]),
+});
+
+export const MigrateProjectConfigToGlobalResponseMessageSchema = z.object({
+  type: z.literal("project.config.migrateToGlobal.response"),
+  // zod-aot 0.2.0 miscompiles boolean discriminators as string options
+  // (`"true"`/`"false"`), so keep this sequential until upstream fixes it.
+  payload: z.union([
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(true),
+      projectId: z.string(),
+      config: PaseoConfigRawSchema,
+      revision: PaseoConfigRevisionSchema,
+    }),
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(false),
+      error: ProjectConfigRpcErrorSchema,
+    }),
+  ]),
+});
+
+export const DeleteProjectConfigFileResponseMessageSchema = z.object({
+  type: z.literal("project.config.deleteProjectFile.response"),
+  // zod-aot 0.2.0 miscompiles boolean discriminators as string options
+  // (`"true"`/`"false"`), so keep this sequential until upstream fixes it.
+  payload: z.union([
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(true),
     }),
     z.object({
       requestId: z.string(),
@@ -5339,6 +5505,18 @@ const CheckoutPrGithubStatusSchema = CheckoutPrGithubStatusObjectSchema.optional
 // in the consumer that knows that forge family.
 const CheckoutPrForgeSpecificSchema = z.unknown().optional();
 
+// One reviewer on a pull request, for the PR panel's Reviewers section.
+export const CheckoutPrReviewerSchema = z.object({
+  login: z.string(),
+  avatarUrl: z.string().nullable().optional(),
+  // One of "approved" | "changes_requested" | "commented" | "pending". Kept open
+  // on the wire so a newer daemon can introduce a state without breaking an older
+  // client's parse; the client maps any unknown value to "pending" (awaiting).
+  state: z.string(),
+  // True when the requested reviewer is a team rather than a user.
+  isTeam: z.boolean().optional(),
+});
+
 export const CheckoutPrStatusSchema = z.object({
   // COMPAT(forge): added in v0.2.0-beta.1. Remove the GitHub default after
   // 2027-01-17 once the supported daemon floor is >= v0.2.0.
@@ -5379,6 +5557,10 @@ export const CheckoutPrStatusSchema = z.object({
     .default([]),
   checksStatus: z.string().optional(),
   reviewDecision: z.string().nullable().optional(),
+  // COMPAT(prReviewers): added in v0.11.0, remove optional after 2027-10-08.
+  // Per-reviewer roster (requested reviewers + latest verdict). Older daemons
+  // omit it; the client then renders no Reviewers section.
+  reviewers: z.array(CheckoutPrReviewerSchema).optional(),
   repoOwner: z.string().optional(),
   repoName: z.string().optional(),
   github: CheckoutPrGithubStatusSchema,
@@ -5569,6 +5751,28 @@ export const CheckoutForgeReplyCommentResponseSchema = z.object({
     success: z.boolean(),
     // URL of the posted reply when the forge returns one.
     url: z.string().nullable(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutForgeResolveThreadResponseSchema = z.object({
+  type: z.literal("checkout.forge.resolve_thread.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    // The thread's resolved state after the mutation (echoes the request on success).
+    resolved: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutForgeRequestReviewResponseSchema = z.object({
+  type: z.literal("checkout.forge.request_review.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -6970,6 +7174,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentTimelineSubscriptionResponseMessageSchema,
   AgentAttentionRequiredMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentPlansListResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,
@@ -6993,6 +7198,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigResponseMessageSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
+  MigrateProjectConfigToGlobalResponseMessageSchema,
+  DeleteProjectConfigFileResponseMessageSchema,
   SetAgentModeResponseMessageSchema,
   SetAgentModelResponseMessageSchema,
   SetAgentThinkingResponseMessageSchema,
@@ -7031,6 +7238,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeSetAutoMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
   CheckoutForgeReplyCommentResponseSchema,
+  CheckoutForgeResolveThreadResponseSchema,
+  CheckoutForgeRequestReviewResponseSchema,
   CheckoutCommitsListResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
@@ -7193,6 +7402,8 @@ export type AgentTimelineListPromptsResponseMessage = z.infer<
   typeof AgentTimelineListPromptsResponseMessageSchema
 >;
 export type AgentForkContextResponseMessage = z.infer<typeof AgentForkContextResponseMessageSchema>;
+export type AgentPlanEntry = z.infer<typeof AgentPlanEntrySchema>;
+export type AgentPlansListResponseMessage = z.infer<typeof AgentPlansListResponseMessageSchema>;
 export type CancelAgentResponseMessage = z.infer<typeof CancelAgentResponseMessageSchema>;
 export type SendAgentMessageResponseMessage = z.infer<typeof SendAgentMessageResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
@@ -7301,6 +7512,7 @@ export type FetchWorkspacesRequestMessage = z.infer<typeof FetchWorkspacesReques
 export type ProjectListRequestMessage = z.infer<typeof ProjectListRequestMessageSchema>;
 export type FetchAgentRequestMessage = z.infer<typeof FetchAgentRequestMessageSchema>;
 export type AgentForkContextRequestMessage = z.infer<typeof AgentForkContextRequestMessageSchema>;
+export type AgentPlansListRequestMessage = z.infer<typeof AgentPlansListRequestMessageSchema>;
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequestSchema>;
 export type WaitForFinishRequest = z.infer<typeof WaitForFinishRequestSchema>;
 export type DictationStreamStartMessage = z.infer<typeof DictationStreamStartMessageSchema>;
@@ -7423,6 +7635,19 @@ export type CheckoutForgeReplyCommentRequest = z.infer<
 export type CheckoutForgeReplyCommentResponse = z.infer<
   typeof CheckoutForgeReplyCommentResponseSchema
 >;
+export type CheckoutForgeResolveThreadRequest = z.infer<
+  typeof CheckoutForgeResolveThreadRequestSchema
+>;
+export type CheckoutForgeResolveThreadResponse = z.infer<
+  typeof CheckoutForgeResolveThreadResponseSchema
+>;
+export type CheckoutForgeRequestReviewRequest = z.infer<
+  typeof CheckoutForgeRequestReviewRequestSchema
+>;
+export type CheckoutForgeRequestReviewResponse = z.infer<
+  typeof CheckoutForgeRequestReviewResponseSchema
+>;
+export type CheckoutPrReviewer = z.infer<typeof CheckoutPrReviewerSchema>;
 export type CheckoutForgeGetCheckDetailsRequest = z.infer<
   typeof CheckoutForgeGetCheckDetailsRequestSchema
 >;

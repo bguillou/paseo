@@ -34,6 +34,7 @@ import type {
   ForgeSpecificStatusFacts,
   PullRequestCheck,
   PullRequestMergeable,
+  PullRequestReviewer,
 } from "../services/forge-service.js";
 import { createForgeService } from "../services/forge-registry.js";
 import {
@@ -196,6 +197,7 @@ export interface WorkspaceGitRuntimeSnapshot {
       checks?: PullRequestCheck[];
       checksStatus?: "none" | "pending" | "success" | "failure";
       reviewDecision?: "approved" | "changes_requested" | "pending" | null;
+      reviewers?: PullRequestReviewer[];
       forgeSpecific?: ForgeSpecificStatusFacts;
     } | null;
     error: { message: string } | null;
@@ -821,6 +823,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         : {}),
       ...(options.ignoreWhitespace === true ? { ignoreWhitespace: true } : {}),
       ...(options.includeStructured === true ? { includeStructured: true } : {}),
+      ...(options.mode === "base" && options.baseRefAdvisory === true
+        ? { baseRefAdvisory: true }
+        : {}),
     };
   }
 
@@ -1314,7 +1319,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     const promise = this.deps
-      .getCheckoutSnapshotFacts(target.cwd, context)
+      .getCheckoutSnapshotFacts(target.cwd, {
+        ...context,
+        // Carry the last-known PR base so facts diff against it (stacked PRs). The first
+        // computation runs before the forge loads; the forge self-heal refresh recomputes
+        // facts once the PR status (and its base) is known.
+        pullRequestBaseRef:
+          context.pullRequestBaseRef ?? target.latestForge?.pullRequest?.baseRefName ?? null,
+      })
       .then((facts) => {
         target.latestFacts = facts;
         return facts;

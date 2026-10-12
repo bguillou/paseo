@@ -152,6 +152,19 @@ export const zhCN: TranslationResources = {
     },
     attachments: {
       addImage: "添加图片",
+      addConversation: "添加对话",
+      conversationPickerTitle: "附加对话",
+      conversationSearchPlaceholder: "搜索对话…",
+      conversationEmpty: "该项目中没有其他对话",
+      conversationUntitled: "未命名对话",
+      attachConversationFailed: "附加对话失败",
+      addPlan: "添加计划",
+      planTitle: "计划",
+      planPickerTitle: "附加计划",
+      planSearchPlaceholder: "搜索计划…",
+      planEmpty: "此工作树中没有计划",
+      planUntitled: "未命名计划",
+      attachPlanFailed: "附加计划失败",
       pasteImage: "粘贴图片",
       addFile: "Upload file",
       addIssueOrPr: "添加 issue 或 PR",
@@ -559,6 +572,7 @@ export const zhCN: TranslationResources = {
       },
       empty: {
         noCommands: "此 workspace 没有运行 setup 命令。",
+        notRun: "此 workspace 尚未运行 setup。",
       },
       accessibility: {
         noCommands: "此 workspace 没有运行 setup 命令",
@@ -611,6 +625,22 @@ export const zhCN: TranslationResources = {
       hostDisconnected: "Host 未连接",
       updateHost: "请更新主机以使用原生终端渲染器。",
       unableToSubscribe: "无法订阅 Terminal",
+      createFailed: "创建终端失败",
+    },
+    bottomDock: {
+      collapse: "收起面板",
+      expand: "展开面板",
+      newTerminal: "新建终端",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "该工作区未配置脚本。",
+        noOutput: "运行脚本以在此查看其输出。",
+      },
     },
     tabs: {
       loading: "正在加载...",
@@ -972,6 +1002,12 @@ export const zhCN: TranslationResources = {
           addingToChat: "正在添加...",
           reply: "回复",
           sendingReply: "正在发送…",
+          resolve: "解决",
+          unresolve: "取消解决",
+          resolving: "处理中…",
+          openInDiff: "在差异中打开",
+          showResolved: "显示已解决",
+          hideResolved: "隐藏已解决",
         },
         checksOverview: {
           headline: {
@@ -1022,8 +1058,12 @@ export const zhCN: TranslationResources = {
         sections: {
           checks: "Checks",
           pipeline: "流水线",
-          reviews: "Reviews",
+          reviewers: "审查者",
           activity: "动态",
+          stack: "堆叠",
+        },
+        stack: {
+          current: "当前",
         },
         empty: {
           noJobs: "无作业",
@@ -1061,6 +1101,16 @@ export const zhCN: TranslationResources = {
           requestedChanges: "请求修改",
           reviewed: "已审查",
         },
+        reviewers: {
+          empty: "还没有审查者",
+          requestReviewA11y: "重新请求 {{login}} 审查",
+          status: {
+            approved: "已批准",
+            changesRequested: "请求修改",
+            waiting: "等待中",
+            commented: "已评论",
+          },
+        },
         time: {
           justNow: "刚刚",
         },
@@ -1073,6 +1123,8 @@ export const zhCN: TranslationResources = {
           statusLoadFailed: "无法加载 Pull Request 状态",
           activityLoadFailed: "无法加载 Pull Request 活动",
           replyFailed: "无法发布回复",
+          resolveFailed: "无法更新讨论",
+          requestReviewFailed: "无法请求审查",
         },
       },
       forgeSetup: {
@@ -1143,6 +1195,12 @@ export const zhCN: TranslationResources = {
       working: "运行中",
       done: "已完成",
     },
+    prStatusBucket: {
+      inReview: "审核中",
+      inProgress: "进行中",
+      backlog: "待办",
+      done: "已完成",
+    },
     display: {
       trigger: "显示偏好",
       heading: "显示",
@@ -1150,6 +1208,7 @@ export const zhCN: TranslationResources = {
         label: "分组",
         project: "项目",
         status: "状态",
+        prStatus: "PR 状态",
         labels: "标签",
       },
       titleSource: {
@@ -2757,6 +2816,9 @@ export const zhCN: TranslationResources = {
         editScript: "编辑 {{name}}",
         runAsService: "作为服务运行",
         serviceHint: "Paseo 会监管该进程，并通过 $PASEO_PORT 分配端口",
+        previewUrl: "预览 URL",
+        previewUrlHint:
+          "覆盖预览打开的 URL。使用 $PASEO_PORT 表示分配的端口，例如 http://localhost:$PASEO_PORT/app",
         actions: {
           add: "添加 script",
           edit: "编辑",
@@ -2779,6 +2841,32 @@ export const zhCN: TranslationResources = {
         failedTitle: "无法保存 paseo.json",
         failedDescription: "重试，或从磁盘重新加载最新版本。",
       },
+      source: {
+        label: "配置位置",
+        projectFile: "项目",
+        global: "本机",
+      },
+      migrate: {
+        title: "将配置保存到本机",
+        description: "将此项目的 paseo.json 复制到你的用户设置中，这样无需向仓库提交任何文件。",
+        confirmTitle: "将配置移动到本机？",
+        confirmMessage:
+          "已提交的 paseo.json 会被复制到你的用户设置中。在你将其从仓库中移除之前，它仍然优先生效。",
+        confirmOverwriteMessage: "本机上已存在此项目的配置，将被覆盖。",
+        moved: "已将配置复制到本机",
+        failedTitle: "无法移动配置",
+        committedStillPresentTitle: "已提交的 paseo.json 仍在使用",
+        committedStillPresentDescription:
+          "已提交的 paseo.json 优先生效。请将其从仓库中移除（并提交该删除），本机的配置才会生效。",
+      },
+      delete: {
+        confirmTitle: "移除已提交的 paseo.json？",
+        confirmMessage:
+          "从工作树中删除 paseo.json，使本机的配置生效。请提交该删除，以免新的工作树恢复它。",
+        confirm: "移除文件",
+        deleted: "已移除已提交的 paseo.json",
+        failed: "无法移除 paseo.json",
+      },
       actions: {
         reload: "重新加载",
         tryAgain: "重试",
@@ -2786,6 +2874,7 @@ export const zhCN: TranslationResources = {
         saved: "Project 已保存",
         saving: "正在保存...",
         cancel: "取消",
+        moveToGlobal: "移动到本机",
       },
     },
   },

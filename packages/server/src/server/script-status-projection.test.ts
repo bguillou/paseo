@@ -154,6 +154,39 @@ describe("script-status-projection", () => {
     }
   });
 
+  it("surfaces a configured previewUrl on the service payload", () => {
+    const workspaceId = "workspace-preview-url";
+    const workspace = createWorkspaceRepo({
+      paseoConfig: {
+        scripts: {
+          web: {
+            type: "service",
+            command: "npm run web",
+            port: 3000,
+            previewUrl: "http://localhost:$PASEO_PORT/app",
+          },
+          bare: { type: "service", command: "npm run bare" },
+        },
+      },
+    });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    try {
+      const payloads = buildPayloads({
+        workspaceId,
+        workspaceDirectory: workspace.repoDir,
+        runtimeStore,
+        daemonPort: 6767,
+      });
+      const web = payloads.find((p) => p.scriptName === "web");
+      const bare = payloads.find((p) => p.scriptName === "bare");
+      expect(web?.previewUrl).toBe("http://localhost:$PASEO_PORT/app");
+      // Omitted (not null) when no previewUrl is configured.
+      expect(bare && "previewUrl" in bare).toBe(false);
+    } finally {
+      workspace.cleanup();
+    }
+  });
+
   it("builds service hostnames from service-provided git metadata", () => {
     const workspaceId = "workspace-service-metadata";
     const workspace = createWorkspaceRepo({
@@ -558,40 +591,42 @@ describe("script-status-projection", () => {
           health: "healthy",
         },
       ]);
-      await Promise.resolve();
-
-      expect(session.emit).toHaveBeenCalledWith({
-        type: "script_status_update",
-        payload: {
-          workspaceId,
-          scripts: [
-            {
-              scriptName: "api",
-              type: "service",
-              hostname: "api--repo.localhost",
-              port: 3001,
-              localProxyUrl: "http://api--repo.localhost:6767",
-              publicProxyUrl: null,
-              proxyUrl: "http://api--repo.localhost:6767",
-              lifecycle: "running",
-              health: "healthy",
-              exitCode: null,
-              terminalId: "term-api",
-            },
-            {
-              scriptName: "typecheck",
-              type: "script",
-              hostname: "typecheck",
-              port: null,
-              proxyUrl: null,
-              lifecycle: "stopped",
-              health: null,
-              exitCode: null,
-              terminalId: null,
-            },
-          ],
-        },
-      });
+      // The emitter resolves the effective config asynchronously before emitting,
+      // so wait for the status update rather than flushing a fixed microtask.
+      await vi.waitFor(() =>
+        expect(session.emit).toHaveBeenCalledWith({
+          type: "script_status_update",
+          payload: {
+            workspaceId,
+            scripts: [
+              {
+                scriptName: "api",
+                type: "service",
+                hostname: "api--repo.localhost",
+                port: 3001,
+                localProxyUrl: "http://api--repo.localhost:6767",
+                publicProxyUrl: null,
+                proxyUrl: "http://api--repo.localhost:6767",
+                lifecycle: "running",
+                health: "healthy",
+                exitCode: null,
+                terminalId: "term-api",
+              },
+              {
+                scriptName: "typecheck",
+                type: "script",
+                hostname: "typecheck",
+                port: null,
+                proxyUrl: null,
+                lifecycle: "stopped",
+                health: null,
+                exitCode: null,
+                terminalId: null,
+              },
+            ],
+          },
+        }),
+      );
     } finally {
       workspace.cleanup();
     }

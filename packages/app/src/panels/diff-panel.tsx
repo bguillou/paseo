@@ -136,6 +136,7 @@ function ChangesPanel() {
           enabled={isActive}
           presentation={presentation}
           focusPath={target.kind === "working_diff" ? target.focusPath : undefined}
+          focusLine={target.kind === "working_diff" ? target.focusLine : undefined}
           focusRequestId={target.kind === "working_diff" ? target.focusRequestId : undefined}
           onSelectDiffFile={isTree ? handleSelectDiffFile : undefined}
           onOpenFile={handleOpenFile}

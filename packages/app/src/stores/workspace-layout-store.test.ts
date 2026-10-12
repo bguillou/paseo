@@ -16,6 +16,7 @@ vi.mock("@react-native-async-storage/async-storage", () => {
 });
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DEFAULT_EXPLORER_SIDEBAR_WIDTH } from "@/components/explorer-sidebar-layout";
 import { createViewedTimelineSync } from "@/timeline/viewed-timeline-sync";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/workspace-tabs/model";
 import { defaultChangesState, type ChangesState } from "@/panels/changes/state";
@@ -521,7 +522,7 @@ describe("workspace-layout-store version 2 migration", () => {
         const persisted = JSON.parse(
           (await AsyncStorage.getItem("workspace-layout-state")) ?? "{}",
         );
-        expect(persisted.version).toBe(2);
+        expect(persisted.version).toBe(3);
       });
     },
   );
@@ -538,7 +539,7 @@ describe("workspace-layout-store version 2 migration", () => {
     });
   });
 
-  it("writes version 2 preserving the existing Explorer key", async () => {
+  it("writes version 3 preserving the existing Explorer key", async () => {
     await persistVersionOneLayout("v0.6");
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
 
@@ -546,10 +547,10 @@ describe("workspace-layout-store version 2 migration", () => {
 
     await vi.waitFor(async () => {
       const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
       expect(Object.keys(persisted.state).sort()).toEqual([
         "explorerPaneIdByWorkspace",
-        "explorerSidebarWidthByWorkspace",
+        "explorerSidebarWidth",
         "layoutByWorkspace",
         "pinnedAgentIdsByWorkspace",
         "pullRequestTabAutoOpenedByWorkspace",
@@ -562,7 +563,7 @@ describe("workspace-layout-store version 2 migration", () => {
     });
   });
 
-  it("does not replace Explorer again when the migrated version 2 layout reloads", async () => {
+  it("does not replace Explorer again when the migrated layout reloads", async () => {
     await persistVersionOneLayout("v0.6");
     const migrated = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await migrated.persist.rehydrate();
@@ -581,7 +582,7 @@ describe("workspace-layout-store version 2 migration", () => {
 
     await vi.waitFor(async () => {
       const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
     });
     const reloaded = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await reloaded.persist.rehydrate();
@@ -596,6 +597,43 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(findPaneContainingTab(reloadedLayout.root, addedTabId as string)?.id).toBe(
       reloadedExplorer?.id,
     );
+  });
+});
+
+describe("workspace-layout-store explorer sidebar width", () => {
+  beforeEach(async () => {
+    await AsyncStorage.removeItem("workspace-layout-state");
+  });
+
+  it("shares one width across every workspace instead of keying it by workspace", () => {
+    const store = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    store.getState().resizeExplorerSidebar(512);
+    // No workspace key is passed: the scalar is the same regardless of the active workspace.
+    expect(store.getState().explorerSidebarWidth).toBe(512);
+  });
+
+  it("ignores non-finite or non-positive widths", () => {
+    const store = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    store.getState().resizeExplorerSidebar(400);
+    store.getState().resizeExplorerSidebar(0);
+    store.getState().resizeExplorerSidebar(Number.NaN);
+    expect(store.getState().explorerSidebarWidth).toBe(400);
+  });
+
+  it("collapses a legacy per-workspace width map into the shared scalar on rehydrate", async () => {
+    await AsyncStorage.setItem(
+      "workspace-layout-state",
+      JSON.stringify({
+        state: {
+          layoutByWorkspace: {},
+          explorerSidebarWidthByWorkspace: { "server:one": 540, "server:two": 300 },
+        },
+        version: 3,
+      }),
+    );
+    const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await restored.persist.rehydrate();
+    expect(restored.getState().explorerSidebarWidth).toBe(540);
   });
 });
 
@@ -3144,7 +3182,7 @@ describe("workspace-layout-store actions", () => {
       layoutByWorkspace: { [workspaceKey]: layout },
       pinnedAgentIdsByWorkspace: {},
       splitSizesByWorkspace: currentState.splitSizesByWorkspace,
-      explorerSidebarWidthByWorkspace: currentState.explorerSidebarWidthByWorkspace,
+      explorerSidebarWidth: currentState.explorerSidebarWidth,
       explorerPaneIdByWorkspace: {},
       pullRequestTabAutoOpenedByWorkspace: currentState.pullRequestTabAutoOpenedByWorkspace,
       sidePaneIdByWorkspace: currentState.sidePaneIdByWorkspace,
@@ -3379,7 +3417,7 @@ describe("workspace-layout-store actions", () => {
       layoutByWorkspace: {},
       pinnedAgentIdsByWorkspace: {},
       splitSizesByWorkspace: {},
-      explorerSidebarWidthByWorkspace: {},
+      explorerSidebarWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
       explorerPaneIdByWorkspace: {},
       sidePaneIdByWorkspace: {},
     });

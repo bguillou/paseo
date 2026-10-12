@@ -43,6 +43,48 @@ export function buildPrTimeline(activities: readonly PrPaneActivity[]): PrTimeli
   return nestThreadsUnderReviews(entries);
 }
 
+/** Counts resolved threads, standalone and nested under reviews. */
+export function countResolvedThreads(entries: readonly PrTimelineEntry[]): number {
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.kind === "thread") {
+      if (entry.isResolved) {
+        count += 1;
+      }
+    } else if (entry.kind === "review") {
+      count += entry.threads.filter((thread) => thread.isResolved).length;
+    }
+  }
+  return count;
+}
+
+/**
+ * Hides resolved threads unless `showResolved`. Reviews keep their summary but drop
+ * their resolved child threads; standalone resolved threads are removed entirely.
+ */
+export function filterResolvedEntries(
+  entries: readonly PrTimelineEntry[],
+  showResolved: boolean,
+): PrTimelineEntry[] {
+  if (showResolved) {
+    return [...entries];
+  }
+  return entries.flatMap((entry): PrTimelineEntry[] => {
+    if (entry.kind === "thread") {
+      return entry.isResolved ? [] : [entry];
+    }
+    if (entry.kind === "review") {
+      return [{ ...entry, threads: entry.threads.filter((thread) => !thread.isResolved) }];
+    }
+    return [entry];
+  });
+}
+
+/** True when a review entry has no summary text and no (visible) threads to show. */
+export function isReviewEntryEmpty(entry: PrReviewEntry): boolean {
+  return entry.review.body.trim() === "" && entry.threads.length === 0;
+}
+
 function groupThreads(activities: readonly PrPaneActivity[]): PrTimelineEntry[] {
   const entries: PrTimelineEntry[] = [];
   const threadsById = new Map<string, PrThreadEntry>();

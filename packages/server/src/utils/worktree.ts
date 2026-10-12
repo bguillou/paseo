@@ -124,6 +124,9 @@ export interface ServiceScriptConfig {
   type: "service";
   command: string;
   port?: number; // explicit port override, otherwise auto-assigned
+  // Overrides the preview URL the app opens, supporting a `$PASEO_PORT`
+  // placeholder substituted with the assigned service port.
+  previewUrl?: string;
 }
 
 export type ScriptConfig = PlainScriptConfig | ServiceScriptConfig;
@@ -284,16 +287,40 @@ function readPaseoConfigOrThrow(repoRoot: string): PaseoConfig | null {
   return result.config;
 }
 
-export function getWorktreeSetupCommands(repoRoot: string): string[] {
-  return readPaseoConfigOrThrow(repoRoot)?.worktree?.setup ?? [];
+export function getWorktreeSetupCommands(config: PaseoConfig | null): string[] {
+  return config?.worktree?.setup ?? [];
 }
 
-export function getWorktreeTeardownCommands(repoRoot: string): string[] {
-  return readPaseoConfigOrThrow(repoRoot)?.worktree?.teardown ?? [];
+export function getWorktreeTeardownCommands(config: PaseoConfig | null): string[] {
+  return config?.worktree?.teardown ?? [];
 }
 
-export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
-  const terminals = readPaseoConfigOrThrow(repoRoot)?.worktree?.terminals;
+export function getWorktreePortBase(config: PaseoConfig | null): number | null {
+  return config?.worktree?.portBase ?? null;
+}
+
+// COMPAT(projectGlobalConfig): on-disk-reading wrappers retained for callers
+// that have no resolved effective config (e.g. tests, deep worktree ops).
+// Prefer passing a resolved PaseoConfig. Remove when every caller threads the
+// effective config, after 2027-10-07.
+export function getWorktreeSetupCommandsFromRepoRoot(repoRoot: string): string[] {
+  return getWorktreeSetupCommands(readPaseoConfigOrThrow(repoRoot));
+}
+
+export function getWorktreeTeardownCommandsFromRepoRoot(repoRoot: string): string[] {
+  return getWorktreeTeardownCommands(readPaseoConfigOrThrow(repoRoot));
+}
+
+export function getWorktreePortBaseFromRepoRoot(repoRoot: string): number | null {
+  return getWorktreePortBase(readPaseoConfigOrThrow(repoRoot));
+}
+
+export function getWorktreeTerminalSpecsFromRepoRoot(repoRoot: string): WorktreeTerminalConfig[] {
+  return getWorktreeTerminalSpecs(readPaseoConfigOrThrow(repoRoot));
+}
+
+export function getWorktreeTerminalSpecs(config: PaseoConfig | null): WorktreeTerminalConfig[] {
+  const terminals = config?.worktree?.terminals;
   if (!Array.isArray(terminals) || terminals.length === 0) {
     return [];
   }
@@ -361,6 +388,14 @@ export function getScriptConfigs(config: PaseoConfig | null): Map<string, Script
       Number.isFinite(entry.port)
     ) {
       scriptConfig.port = entry.port;
+    }
+
+    if (
+      isServiceScript(scriptConfig) &&
+      typeof entry.previewUrl === "string" &&
+      entry.previewUrl.trim().length > 0
+    ) {
+      scriptConfig.previewUrl = entry.previewUrl.trim();
     }
 
     result.set(name, scriptConfig);
@@ -647,9 +682,14 @@ export async function runWorktreeSetupCommands(options: {
   runtimeEnv?: WorktreeRuntimeEnv;
   signal?: AbortSignal;
   onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
+  // Resolved effective config (project file winning over global). When omitted,
+  // falls back to reading the worktree's own paseo.json from disk.
+  config?: PaseoConfig | null;
 }): Promise<WorktreeSetupCommandResult[]> {
-  // Read paseo.json from the worktree (it will have the same content as the source repo)
-  const setupCommands = getWorktreeSetupCommands(options.worktreePath);
+  const setupCommands =
+    options.config !== undefined
+      ? getWorktreeSetupCommands(options.config)
+      : getWorktreeSetupCommandsFromRepoRoot(options.worktreePath);
   if (setupCommands.length === 0) {
     return [];
   }
@@ -660,6 +700,7 @@ export async function runWorktreeSetupCommands(options: {
       worktreePath: options.worktreePath,
       branchName: options.branchName,
       ...(options.repoRootPath ? { repoRootPath: options.repoRootPath } : {}),
+      ...(options.config !== undefined ? { config: options.config } : {}),
     }));
   const setupEnv = createStringCommandShellEnv(createExternalProcessEnv(process.env, runtimeEnv));
 
@@ -719,10 +760,45 @@ async function resolveBranchNameForWorktreePath(worktreePath: string): Promise<s
   return basename(worktreePath);
 }
 
+// Each worktree slot reserves a block of 10 ports (room for a worktree's own
+// services alongside its base port) before the next worktree's base.
+const WORKTREE_PORT_SLOT_STEP = 10;
+
+// Deterministic per-worktree port: `portBase + 10 * slot`, where slot is the
+// lowest block not already taken by a live sibling worktree. Comparing against
+// the set of ports siblings actually hold (rather than recomputing slots) keeps
+// allocation collision-free even if `portBase` later changes, and recycles a
+// slot automatically once its worktree is removed.
+async function allocateDeterministicWorktreePort(options: {
+  worktreePath: string;
+  repoRootPath: string;
+  portBase: number;
+}): Promise<number> {
+  const self = normalizePathForOwnership(options.worktreePath);
+  const siblings = await listPaseoWorktrees({ cwd: options.repoRootPath });
+  const usedPorts = new Set<number>();
+  for (const sibling of siblings) {
+    if (normalizePathForOwnership(sibling.path) === self) continue;
+    const port = readPaseoWorktreeRuntimePort(sibling.path);
+    if (port !== null) usedPorts.add(port);
+  }
+
+  for (let slot = 0; ; slot += 1) {
+    const port = options.portBase + slot * WORKTREE_PORT_SLOT_STEP;
+    if (port > 65535) {
+      throw new Error(`No worktree port slot available under base ${options.portBase}`);
+    }
+    if (!usedPorts.has(port)) return port;
+  }
+}
+
 export async function resolveWorktreeRuntimeEnv(options: {
   worktreePath: string;
   branchName?: string;
   repoRootPath?: string;
+  // Resolved effective config (project file winning over global). When omitted,
+  // the worktree port base falls back to reading the repo root's paseo.json.
+  config?: PaseoConfig | null;
 }): Promise<WorktreeRuntimeEnv> {
   const repoRootPath =
     options.repoRootPath ?? (await inferRepoRootPathFromWorktreePath(options.worktreePath));
@@ -731,7 +807,18 @@ export async function resolveWorktreeRuntimeEnv(options: {
 
   let worktreePort = readPaseoWorktreeRuntimePort(options.worktreePath);
   if (worktreePort === null) {
-    worktreePort = await getAvailablePort();
+    const portBase =
+      options.config !== undefined
+        ? getWorktreePortBase(options.config)
+        : getWorktreePortBaseFromRepoRoot(repoRootPath);
+    worktreePort =
+      portBase !== null
+        ? await allocateDeterministicWorktreePort({
+            worktreePath: options.worktreePath,
+            repoRootPath,
+            portBase,
+          })
+        : await getAvailablePort();
     const metadata = readPaseoWorktreeMetadata(options.worktreePath);
     if (metadata) {
       writePaseoWorktreeRuntimeMetadata(options.worktreePath, { worktreePort });
@@ -758,12 +845,18 @@ export async function runWorktreeTeardownCommands(options: {
   teardownCwd?: string;
   branchName?: string;
   repoRootPath?: string;
+  // Resolved effective config (project file winning over global). When omitted,
+  // falls back to reading the teardown cwd's own paseo.json from disk.
+  config?: PaseoConfig | null;
 }): Promise<WorktreeTeardownCommandResult[]> {
   const teardownCwd = options.teardownCwd ?? options.worktreePath;
   if (getRealpathAwareRelativePath(options.worktreePath, teardownCwd) === null) {
     throw new Error(`Worktree teardown cwd is outside the worktree: ${teardownCwd}`);
   }
-  const teardownCommands = getWorktreeTeardownCommands(teardownCwd);
+  const teardownCommands =
+    options.config !== undefined
+      ? getWorktreeTeardownCommands(options.config)
+      : getWorktreeTeardownCommandsFromRepoRoot(teardownCwd);
   if (teardownCommands.length === 0) {
     return [];
   }

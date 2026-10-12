@@ -340,3 +340,109 @@ export function buildAgentForkContextAttachment(input: {
     boundaryMessageId: selected.boundaryMessageId,
   };
 }
+
+export type AgentPlanOutcome = "pending" | "approved" | "rejected" | "canceled";
+
+export interface ExtractedAgentPlan {
+  /** Stable within the source agent; combines with the agent id for dedup. */
+  planKey: string;
+  createdAt: number;
+  outcome: AgentPlanOutcome;
+  /** First meaningful line of the plan, for a compact picker label. */
+  summary: string | null;
+  text: string;
+}
+
+// Mirrors the app-side resolvePlanOutcome (tool-calls/presentation.ts): a plan's
+// outcome is driven by the tool call's status and `metadata.approved`. Defaults
+// to "pending" when nothing yet marks it approved or rejected.
+function resolvePlanOutcome(item: {
+  status: string;
+  metadata?: Record<string, unknown>;
+}): AgentPlanOutcome {
+  if (item.status === "canceled") {
+    return "canceled";
+  }
+  const approved = item.metadata?.approved;
+  if (approved === false) {
+    return "rejected";
+  }
+  if (approved === true) {
+    return "approved";
+  }
+  return "pending";
+}
+
+function derivePlanSummary(text: string): string | null {
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine
+      .replace(/^#+\s*/, "")
+      .replace(/^[-*]\s+/, "")
+      .trim();
+    if (line) {
+      return line.length > 100 ? `${line.slice(0, 100)}…` : line;
+    }
+  }
+  return null;
+}
+
+/**
+ * Finds every plan an agent produced in its timeline. A plan surfaces as a
+ * `tool_call` item whose detail is `{ type: "plan", text }` — Claude's
+ * `ExitPlanMode` card and Codex's synthetic `plan_approval` both land here. One
+ * entry per occurrence, so an agent that iterated several plans yields several.
+ */
+export function extractAgentPlans(rows: readonly AgentTimelineRow[]): ExtractedAgentPlan[] {
+  const plans: ExtractedAgentPlan[] = [];
+  for (const row of rows) {
+    const item = row.item;
+    if (item.type !== "tool_call" || item.detail.type !== "plan") {
+      continue;
+    }
+    const text = item.detail.text ?? "";
+    const parsed = Date.parse(row.timestamp);
+    plans.push({
+      planKey: item.callId,
+      createdAt: Number.isNaN(parsed) ? 0 : parsed,
+      outcome: resolvePlanOutcome(item),
+      summary: derivePlanSummary(text),
+      text,
+    });
+  }
+  return plans;
+}
+
+function buildPlanContextText(input: {
+  body: string;
+  agentTitle?: string | null;
+  cwd?: string | null;
+}): string {
+  const header = ["Plan from a Paseo agent."];
+  const agentTitle = trimContextMetadata(input.agentTitle);
+  const cwd = trimContextMetadata(input.cwd);
+  if (agentTitle) {
+    header.push(`Source agent: ${agentTitle}`);
+  }
+  if (cwd) {
+    header.push(`Source directory: ${cwd}`);
+  }
+  return `<plan>\n${header.join("\n")}\n\n${input.body}\n</plan>`;
+}
+
+export function buildAgentPlanContextAttachment(input: {
+  text: string;
+  agentTitle?: string | null;
+  cwd?: string | null;
+}): TextAgentAttachment {
+  return {
+    type: "text",
+    mimeType: "text/plain",
+    contextKind: "plan",
+    title: "Plan",
+    text: buildPlanContextText({
+      body: input.text.trim() || "No plan content.",
+      agentTitle: input.agentTitle,
+      cwd: input.cwd,
+    }),
+  };
+}

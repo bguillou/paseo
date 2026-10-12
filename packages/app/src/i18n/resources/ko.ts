@@ -152,6 +152,19 @@ export const ko: TranslationResources = {
     },
     attachments: {
       addImage: "이미지 추가",
+      addConversation: "대화 추가",
+      conversationPickerTitle: "대화 첨부",
+      conversationSearchPlaceholder: "대화 검색…",
+      conversationEmpty: "이 프로젝트에 다른 대화가 없습니다",
+      conversationUntitled: "제목 없는 대화",
+      attachConversationFailed: "대화를 첨부하지 못했습니다",
+      addPlan: "플랜 추가",
+      planTitle: "플랜",
+      planPickerTitle: "플랜 첨부",
+      planSearchPlaceholder: "플랜 검색…",
+      planEmpty: "이 워크트리에 플랜이 없습니다",
+      planUntitled: "제목 없는 플랜",
+      attachPlanFailed: "플랜 첨부 실패",
       pasteImage: "이미지 붙여넣기",
       addFile: "파일 업로드",
       addIssueOrPr: "이슈 또는 PR 추가",
@@ -560,6 +573,7 @@ export const ko: TranslationResources = {
       },
       empty: {
         noCommands: "이 워크스페이스에서 실행된 설정 명령이 없습니다.",
+        notRun: "이 워크스페이스에서 설정이 실행되지 않았습니다.",
       },
       accessibility: {
         noCommands: "이 워크스페이스에서 실행된 설정 명령이 없습니다",
@@ -612,6 +626,22 @@ export const ko: TranslationResources = {
       hostDisconnected: "호스트가 연결되어 있지 않습니다",
       updateHost: "기본 터미널 렌더러를 사용하도록 호스트를 업데이트합니다.",
       unableToSubscribe: "터미널을 구독할 수 없습니다",
+      createFailed: "터미널을 만들지 못했습니다",
+    },
+    bottomDock: {
+      collapse: "패널 접기",
+      expand: "패널 펼치기",
+      newTerminal: "새 터미널",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "이 워크스페이스에 구성된 스크립트가 없습니다.",
+        noOutput: "스크립트를 실행하면 여기에 출력이 표시됩니다.",
+      },
     },
     tabs: {
       loading: "불러오는 중...",
@@ -987,6 +1017,12 @@ export const ko: TranslationResources = {
           addingToChat: "추가 중...",
           reply: "답글",
           sendingReply: "전송 중…",
+          resolve: "해결",
+          unresolve: "미해결로 변경",
+          resolving: "처리 중…",
+          openInDiff: "Diff에서 열기",
+          showResolved: "해결된 항목 표시",
+          hideResolved: "해결된 항목 숨기기",
         },
         checksOverview: {
           headline: {
@@ -1037,8 +1073,12 @@ export const ko: TranslationResources = {
         sections: {
           checks: "검사",
           pipeline: "파이프라인",
-          reviews: "리뷰",
+          reviewers: "리뷰어",
           activity: "활동",
+          stack: "스택",
+        },
+        stack: {
+          current: "현재",
         },
         empty: {
           noJobs: "작업 없음",
@@ -1076,6 +1116,16 @@ export const ko: TranslationResources = {
           requestedChanges: "변경 요청됨",
           reviewed: "리뷰됨",
         },
+        reviewers: {
+          empty: "아직 리뷰어가 없습니다",
+          requestReviewA11y: "{{login}}에게 리뷰 다시 요청",
+          status: {
+            approved: "승인됨",
+            changesRequested: "변경 요청됨",
+            waiting: "대기 중",
+            commented: "댓글",
+          },
+        },
         time: {
           justNow: "방금",
         },
@@ -1088,6 +1138,8 @@ export const ko: TranslationResources = {
           statusLoadFailed: "풀 리퀘스트 상태를 불러올 수 없습니다",
           activityLoadFailed: "풀 리퀘스트 활동을 불러올 수 없습니다",
           replyFailed: "답글을 게시할 수 없습니다",
+          resolveFailed: "스레드를 업데이트할 수 없습니다",
+          requestReviewFailed: "리뷰를 요청할 수 없습니다",
         },
       },
       forgeSetup: {
@@ -1158,6 +1210,12 @@ export const ko: TranslationResources = {
       working: "실행 중",
       done: "완료",
     },
+    prStatusBucket: {
+      inReview: "검토 중",
+      inProgress: "진행 중",
+      backlog: "백로그",
+      done: "완료",
+    },
     display: {
       trigger: "표시 설정",
       heading: "표시",
@@ -1165,6 +1223,7 @@ export const ko: TranslationResources = {
         label: "그룹화",
         project: "프로젝트",
         status: "상태",
+        prStatus: "PR 상태",
         labels: "레이블",
       },
       titleSource: {
@@ -2805,6 +2864,9 @@ export const ko: TranslationResources = {
         editScript: "{{name}} 편집",
         runAsService: "서비스로 실행",
         serviceHint: "Paseo가 프로세스를 감독하고 $PASEO_PORT를 통해 포트를 할당합니다",
+        previewUrl: "미리보기 URL",
+        previewUrlHint:
+          "미리보기가 여는 URL을 재정의합니다. 할당된 포트에는 $PASEO_PORT를 사용하세요. 예: http://localhost:$PASEO_PORT/app",
         actions: {
           add: "스크립트 추가",
           edit: "편집",
@@ -2828,6 +2890,33 @@ export const ko: TranslationResources = {
         failedTitle: "paseo.json을 저장할 수 없습니다",
         failedDescription: "다시 시도하거나 디스크에서 최신 버전을 다시 로드하세요.",
       },
+      source: {
+        label: "구성 위치",
+        projectFile: "프로젝트",
+        global: "이 컴퓨터",
+      },
+      migrate: {
+        title: "이 컴퓨터에 구성 저장",
+        description:
+          "이 프로젝트의 paseo.json을 사용자 설정으로 복사하여 저장소에 아무것도 커밋하지 않아도 되게 합니다.",
+        confirmTitle: "구성을 이 컴퓨터로 옮기시겠습니까?",
+        confirmMessage:
+          "커밋된 paseo.json이 사용자 설정으로 복사됩니다. 저장소에서 제거할 때까지 계속 우선 적용됩니다.",
+        confirmOverwriteMessage: "이 프로젝트의 구성이 이 컴퓨터에 이미 있으며 덮어쓰게 됩니다.",
+        moved: "구성을 이 컴퓨터로 복사했습니다",
+        failedTitle: "구성을 옮길 수 없습니다",
+        committedStillPresentTitle: "커밋된 paseo.json이 아직 사용 중입니다",
+        committedStillPresentDescription:
+          "커밋된 paseo.json이 우선합니다. 이 컴퓨터의 구성을 적용하려면 저장소에서 제거하고 삭제를 커밋하세요.",
+      },
+      delete: {
+        confirmTitle: "커밋된 paseo.json을 제거하시겠습니까?",
+        confirmMessage:
+          "이 컴퓨터의 구성이 적용되도록 작업 트리에서 paseo.json을 삭제합니다. 새 워크트리에서 복원되지 않도록 삭제를 커밋하세요.",
+        confirm: "파일 제거",
+        deleted: "커밋된 paseo.json을 제거했습니다",
+        failed: "paseo.json을 제거할 수 없습니다",
+      },
       actions: {
         reload: "다시 로드",
         tryAgain: "다시 시도",
@@ -2835,6 +2924,7 @@ export const ko: TranslationResources = {
         saved: "프로젝트가 저장되었습니다",
         saving: "저장하는 중...",
         cancel: "취소",
+        moveToGlobal: "이 컴퓨터로 이동",
       },
     },
   },

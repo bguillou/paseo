@@ -1,10 +1,36 @@
 import { describe, expect, it } from "vitest";
-import type { ComposerAttachment, PullRequestContextAttachment } from "./types";
+import type {
+  ComposerAttachment,
+  PlanContextAttachment,
+  PullRequestContextAttachment,
+} from "./types";
 import {
   isWorkspaceAttachment,
   userAttachmentsOnly,
   workspaceAttachmentToSubmitAttachment,
 } from "./workspace-attachment-utils";
+
+function planAttachment(overrides: Partial<PlanContextAttachment> = {}): PlanContextAttachment {
+  return {
+    kind: "plan_context",
+    id: "plan_context:agent-1:call-1",
+    attachment: {
+      type: "text",
+      mimeType: "text/plain",
+      contextKind: "plan",
+      title: "Plan",
+      text: "<plan>Do the thing</plan>",
+    },
+    source: {
+      serverId: "local",
+      agentId: "agent-1",
+      planKey: "call-1",
+      createdAt: 1700000000000,
+      outcome: "approved",
+    },
+    ...overrides,
+  };
+}
 
 function contextAttachment(
   overrides: Partial<PullRequestContextAttachment> = {},
@@ -53,5 +79,16 @@ describe("workspace attachment utilities", () => {
       title: "Comment · octocat",
       text: "GitHub pull request comment\n\nLooks good.",
     });
+  });
+
+  it("treats a plan context as a workspace attachment and strips it from user drafts", () => {
+    const plan = planAttachment();
+    expect(isWorkspaceAttachment(plan)).toBe(true);
+    expect(userAttachmentsOnly([plan])).toEqual([]);
+  });
+
+  it("submits a plan context as its prebuilt text attachment", () => {
+    const plan = planAttachment();
+    expect(workspaceAttachmentToSubmitAttachment(plan)).toEqual(plan.attachment);
   });
 });

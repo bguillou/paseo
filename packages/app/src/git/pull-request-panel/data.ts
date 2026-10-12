@@ -14,6 +14,8 @@ export type { CheckStatus } from "./check-status";
 
 export type PrState = "open" | "draft" | "merged" | "closed";
 export type ReviewState = "approved" | "changes_requested" | "commented";
+// A reviewer's current standing. "pending" = requested but awaiting their review.
+export type ReviewerState = "approved" | "changes_requested" | "commented" | "pending";
 export type ActivityKind = "review" | "comment";
 export type PullRequestProvider = Forge;
 
@@ -81,6 +83,16 @@ export interface PrPaneActivity {
   };
 }
 
+export interface PrReviewer {
+  login: string;
+  authorUrl?: string | null;
+  avatarUrl?: string | null;
+  avatarColor: string;
+  state: ReviewerState;
+  /** True when the requested reviewer is a team rather than a user. */
+  isTeam?: boolean;
+}
+
 export interface PrPaneData {
   provider: PullRequestProviderMetadata;
   /** The forge hosting this change request. */
@@ -93,8 +105,13 @@ export interface PrPaneData {
   title: string;
   state: PrState;
   url: string;
+  /** This PR's own branch (head) and the branch it merges into (base). */
+  headRefName: string;
+  baseRefName: string;
   reviewDecision: "approved" | "changes_requested" | "pending";
   awaitingReviewers: string[];
+  /** Per-reviewer roster for the Reviewers section. Empty when none are known. */
+  reviewers: PrReviewer[];
   checks: PrPaneCheck[];
   /**
    * The forge's already-validated native facts, passed through so pane native
@@ -127,6 +144,7 @@ export function mapPrPaneData(
   const timelineMatchesStatus = timeline?.prNumber === number;
   const provider = toProviderMetadata(forge);
   const forgeSpecific = parseClientForgeFacts(status.forgeSpecific);
+  const reviewers = mapReviewers(status.reviewers);
 
   return {
     provider,
@@ -138,9 +156,13 @@ export function mapPrPaneData(
     title: status.title,
     state: derivePrState(status),
     url: status.url,
+    headRefName: status.headRefName,
+    baseRefName: status.baseRefName,
     reviewDecision: mapReviewDecision(status.reviewDecision),
-    // Requested reviewers are intentionally unwired until the server exposes them.
-    awaitingReviewers: [],
+    awaitingReviewers: reviewers
+      .filter((reviewer) => reviewer.state === "pending")
+      .map((r) => r.login),
+    reviewers,
     checks: mapChecks(status, forge),
     ...(forgeSpecific ? { forgeSpecific } : {}),
     activity: timelineMatchesStatus
@@ -302,6 +324,28 @@ function mapReviewDecision(
     return reviewDecision;
   }
   return "pending";
+}
+
+// The wire keeps reviewer state open (z.string()) so a newer daemon can add a
+// state without breaking an older client; any unknown value means awaiting.
+function normalizeReviewerState(state: string): ReviewerState {
+  if (state === "approved" || state === "changes_requested" || state === "commented") {
+    return state;
+  }
+  return "pending";
+}
+
+function mapReviewers(reviewers: NonNullable<CheckoutPrStatus>["reviewers"]): PrReviewer[] {
+  if (!reviewers) {
+    return [];
+  }
+  return reviewers.map((reviewer) => ({
+    login: reviewer.login,
+    ...(reviewer.avatarUrl ? { avatarUrl: reviewer.avatarUrl } : {}),
+    avatarColor: deriveAvatarColor(reviewer.login),
+    state: normalizeReviewerState(reviewer.state),
+    ...(reviewer.isTeam ? { isTeam: true } : {}),
+  }));
 }
 
 function parsePullRequestNumber(url: string): number | null {

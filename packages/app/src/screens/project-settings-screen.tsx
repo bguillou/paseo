@@ -11,6 +11,7 @@ import type {
   PaseoConfigRaw,
   PaseoConfigRevision,
   ProjectConfigRpcError,
+  ProjectConfigTarget,
 } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Alert } from "@/components/ui/alert";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
@@ -211,16 +213,42 @@ function ProjectSettingsBody({
     setIsEditSheetOpen(true);
   }, []);
   const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
+
+  const supportsGlobalConfig = useHostFeature(selectedHost.serverId, "projectGlobalConfig");
+  const [source, setSource] = useState<ProjectConfigTarget>("project_file");
+  // A host that can't store a global config only ever edits the committed file.
+  const effectiveSource: ProjectConfigTarget = supportsGlobalConfig ? source : "project_file";
+  const otherSource: ProjectConfigTarget =
+    effectiveSource === "project_file" ? "global" : "project_file";
+
   const queryKey = useMemo(
-    () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
-    [selectedHost.serverId, selectedHost.repoRoot],
+    () =>
+      ["project-config", selectedHost.serverId, selectedHost.repoRoot, effectiveSource] as const,
+    [selectedHost.serverId, selectedHost.repoRoot, effectiveSource],
   );
 
   const readQuery = useQuery({
     queryKey,
-    queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
+    queryFn: () => client.readProjectConfig(selectedHost.repoRoot, { source: effectiveSource }),
     retry: false,
   });
+
+  // Probe the opposite layer so the UI can warn before overwriting it and can
+  // tell the user a committed file still shadows the global config.
+  const otherLayerQuery = useQuery({
+    queryKey: [
+      "project-config",
+      selectedHost.serverId,
+      selectedHost.repoRoot,
+      otherSource,
+    ] as const,
+    queryFn: () => client.readProjectConfig(selectedHost.repoRoot, { source: otherSource }),
+    retry: false,
+    enabled: supportsGlobalConfig,
+  });
+  const otherLayerExists =
+    otherLayerQuery.data?.ok === true && otherLayerQuery.data.revision !== null;
+
   const refetchProjectConfig = readQuery.refetch;
   useFocusEffect(
     useCallback(() => {
@@ -304,6 +332,30 @@ function ProjectSettingsBody({
         snapshot={editSnapshot}
       />
 
+      {supportsGlobalConfig ? (
+        <View style={styles.sourceSelectorRow}>
+          <Text style={styles.sourceSelectorLabel}>{t("settings.project.source.label")}</Text>
+          <SegmentedControl<ProjectConfigTarget>
+            size="sm"
+            testID="config-source-selector"
+            value={effectiveSource}
+            onValueChange={setSource}
+            options={[
+              {
+                value: "project_file",
+                label: t("settings.project.source.projectFile"),
+                testID: "config-source-project",
+              },
+              {
+                value: "global",
+                label: t("settings.project.source.global"),
+                testID: "config-source-global",
+              },
+            ]}
+          />
+        </View>
+      ) : null}
+
       {renderContent({
         readQuery,
         loadedConfig,
@@ -317,6 +369,10 @@ function ProjectSettingsBody({
         isHostGone,
         onBackToProjects,
         showBackToProjects,
+        source: effectiveSource,
+        onSwitchSource: setSource,
+        otherLayerExists,
+        supportsGlobalConfig,
       })}
     </View>
   );
@@ -329,12 +385,16 @@ interface RenderContentInput {
   hasUncommittedWorktreeSetupChanges: boolean;
   readError: ProjectConfigRpcError | null;
   selectedHost: ProjectHostEntry;
-  queryKey: readonly [string, string, string];
+  queryKey: readonly [string, string, string, ProjectConfigTarget];
   client: DaemonClient;
   onReload: () => void;
   isHostGone: boolean;
   onBackToProjects: () => void;
   showBackToProjects: boolean;
+  source: ProjectConfigTarget;
+  onSwitchSource: (next: ProjectConfigTarget) => void;
+  otherLayerExists: boolean;
+  supportsGlobalConfig: boolean;
 }
 
 function renderContent({
@@ -350,6 +410,10 @@ function renderContent({
   isHostGone,
   onBackToProjects,
   showBackToProjects,
+  source,
+  onSwitchSource,
+  otherLayerExists,
+  supportsGlobalConfig,
 }: RenderContentInput) {
   if (readQuery.isLoading) {
     return (
@@ -384,7 +448,7 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${source}::${revisionToKey(loadedRevision)}`;
   return (
     <ProjectConfigForm
       key={formKey}
@@ -395,6 +459,10 @@ function renderContent({
       queryKey={queryKey}
       client={client}
       onReload={onReload}
+      source={source}
+      onSwitchSource={onSwitchSource}
+      otherLayerExists={otherLayerExists}
+      supportsGlobalConfig={supportsGlobalConfig}
     />
   );
 }
@@ -473,9 +541,13 @@ interface ProjectConfigFormProps {
   revision: PaseoConfigRevision | null;
   hasUncommittedWorktreeSetupChanges: boolean;
   repoRoot: string;
-  queryKey: readonly [string, string, string];
+  queryKey: readonly [string, string, string, ProjectConfigTarget];
   client: DaemonClient;
   onReload: () => void;
+  source: ProjectConfigTarget;
+  onSwitchSource: (next: ProjectConfigTarget) => void;
+  otherLayerExists: boolean;
+  supportsGlobalConfig: boolean;
 }
 
 function ProjectConfigForm({
@@ -486,10 +558,19 @@ function ProjectConfigForm({
   queryKey,
   client,
   onReload,
+  source,
+  onSwitchSource,
+  otherLayerExists,
+  supportsGlobalConfig,
 }: ProjectConfigFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
+  // Prefix key (host + repo) so invalidation refreshes both layers at once.
+  const projectConfigPrefix = useMemo(
+    () => [queryKey[0], queryKey[1], queryKey[2]] as const,
+    [queryKey],
+  );
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
@@ -504,6 +585,7 @@ function ProjectConfigForm({
         repoRoot,
         config: input.config,
         expectedRevision: input.expectedRevision,
+        target: source,
       });
     },
     onSuccess: (result) => {
@@ -521,6 +603,8 @@ function ProjectConfigForm({
               }),
         });
         setWriteError(null);
+        // The effective config may change for either layer, so refresh both.
+        queryClient.invalidateQueries({ queryKey: projectConfigPrefix });
         queryClient.invalidateQueries({ queryKey: ["projects"] });
         toast.show(t("settings.project.actions.saved"), { variant: "success" });
       } else {
@@ -528,6 +612,58 @@ function ProjectConfigForm({
       }
     },
   });
+
+  const offerDeleteCommittedFile = useCallback(async () => {
+    const confirmed = await confirmDialog({
+      title: t("settings.project.delete.confirmTitle"),
+      message: t("settings.project.delete.confirmMessage"),
+      confirmLabel: t("settings.project.delete.confirm"),
+      cancelLabel: t("settings.project.actions.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) return;
+    const result = await client.deleteProjectConfigFile({ repoRoot });
+    if (result.ok) {
+      queryClient.invalidateQueries({ queryKey: projectConfigPrefix });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.show(t("settings.project.delete.deleted"), { variant: "success" });
+    } else {
+      toast.show(t("settings.project.delete.failed"), { variant: "error" });
+    }
+  }, [client, repoRoot, queryClient, projectConfigPrefix, toast, t]);
+
+  const migrateMutation = useMutation({
+    mutationFn: async () => client.migrateProjectConfigToGlobal({ repoRoot }),
+    onSuccess: (result) => {
+      if (!result.ok) {
+        toast.show(t("settings.project.migrate.failedTitle"), { variant: "error" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: projectConfigPrefix });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.show(t("settings.project.migrate.moved"), { variant: "success" });
+      onSwitchSource("global");
+      // The committed file still wins until it is removed, so offer that next.
+      void offerDeleteCommittedFile();
+    },
+    onError: () => {
+      toast.show(t("settings.project.migrate.failedTitle"), { variant: "error" });
+    },
+  });
+
+  const handleMigrateToGlobal = useCallback(async () => {
+    const confirmed = await confirmDialog({
+      title: t("settings.project.migrate.confirmTitle"),
+      message: otherLayerExists
+        ? t("settings.project.migrate.confirmOverwriteMessage")
+        : t("settings.project.migrate.confirmMessage"),
+      confirmLabel: t("settings.project.actions.moveToGlobal"),
+      cancelLabel: t("settings.project.actions.cancel"),
+      destructive: otherLayerExists,
+    });
+    if (!confirmed) return;
+    migrateMutation.mutate();
+  }, [t, otherLayerExists, migrateMutation]);
 
   const handleSave = useCallback(() => {
     if (writeError?.code === "stale_project_config") return;
@@ -599,6 +735,7 @@ function ProjectConfigForm({
           commandOriginalKind: "missing" satisfies LifecycleOriginalKind,
           type: "",
           portText: "",
+          previewUrlText: "",
           rawEntry: {},
         },
       ],
@@ -686,7 +823,15 @@ function ProjectConfigForm({
 
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
-  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts;
+  const saveDisabled =
+    saveMutation.isPending || migrateMutation.isPending || isStale || hasInvalidScripts;
+  // Migration copies the committed file into the global layer, so it only makes
+  // sense while editing the project file and when a committed file exists.
+  const canMigrateToGlobal = supportsGlobalConfig && source === "project_file" && revision !== null;
+  // Project file wins at runtime, so a committed file shadows the global config
+  // the user is now editing until it is removed.
+  const committedFileShadowsGlobal =
+    supportsGlobalConfig && source === "global" && otherLayerExists;
 
   return (
     <View>
@@ -821,6 +966,51 @@ function ProjectConfigForm({
               {t("settings.project.actions.reload")}
             </Button>
           </Alert>
+        </View>
+      ) : null}
+
+      {committedFileShadowsGlobal ? (
+        <View style={styles.calloutWrap}>
+          <Alert
+            size="sm"
+            testID="committed-config-present-alert"
+            variant="info"
+            title={t("settings.project.migrate.committedStillPresentTitle")}
+            description={t("settings.project.migrate.committedStillPresentDescription")}
+          >
+            <Button
+              testID="committed-config-present-action-0"
+              onPress={offerDeleteCommittedFile}
+              variant="outline"
+              size="sm"
+            >
+              {t("settings.project.delete.confirm")}
+            </Button>
+          </Alert>
+        </View>
+      ) : null}
+
+      {canMigrateToGlobal ? (
+        <View style={settingsStyles.card} testID="migrate-to-global-card">
+          <View style={settingsStyles.row}>
+            <View style={styles.migrateRowContent}>
+              <Text style={styles.migrateTitle}>{t("settings.project.migrate.title")}</Text>
+              <Text style={styles.migrateDescription}>
+                {t("settings.project.migrate.description")}
+              </Text>
+            </View>
+            <Button
+              testID="migrate-to-global-button"
+              accessibilityLabel={t("settings.project.actions.moveToGlobal")}
+              variant="outline"
+              size="sm"
+              disabled={saveMutation.isPending || migrateMutation.isPending}
+              loading={migrateMutation.isPending}
+              onPress={handleMigrateToGlobal}
+            >
+              {t("settings.project.actions.moveToGlobal")}
+            </Button>
+          </View>
         </View>
       ) : null}
 
@@ -1018,6 +1208,10 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
     (next: boolean) => onChange({ ...script, type: next ? SCRIPT_SERVICE_TYPE : "" }),
     [onChange, script],
   );
+  const handlePreviewUrlChange = useCallback(
+    (text: string) => onChange({ ...script, previewUrlText: text }),
+    [onChange, script],
+  );
 
   const handleNameBlur = useCallback(() => markTouched("name"), [markTouched]);
   const handleCommandBlur = useCallback(() => markTouched("command"), [markTouched]);
@@ -1105,6 +1299,21 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
           />
         </View>
       </View>
+      {isService ? (
+        <View style={styles.modalSection}>
+          <Text style={styles.modalLabel}>{t("settings.project.scripts.previewUrl")}</Text>
+          <TextInput
+            testID="script-edit-preview-url"
+            accessibilityLabel={t("settings.project.scripts.previewUrl")}
+            initialValue={script.previewUrlText}
+            onChangeText={handlePreviewUrlChange}
+            placeholder="http://localhost:$PASEO_PORT"
+            placeholderTextColor={styles.placeholderColor.color}
+            style={styles.modalInput}
+          />
+          <Text style={styles.modalHint}>{t("settings.project.scripts.previewUrlHint")}</Text>
+        </View>
+      ) : null}
       <View style={styles.modalFooter}>
         <Button onPress={onCancel} variant="ghost" size="md" testID="script-edit-cancel">
           {t("settings.project.actions.cancel")}
@@ -1200,6 +1409,30 @@ const styles = StyleSheet.create((theme) => ({
   },
   calloutWrap: {
     marginTop: theme.spacing[3],
+  },
+  sourceSelectorRow: {
+    marginBottom: theme.spacing[4],
+    gap: theme.spacing[2],
+  },
+  sourceSelectorLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  migrateRowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
+    paddingRight: theme.spacing[3],
+  },
+  migrateTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+  },
+  migrateDescription: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   footer: {
     marginTop: theme.spacing[4],

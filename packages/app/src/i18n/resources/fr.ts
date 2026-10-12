@@ -154,6 +154,19 @@ export const fr: TranslationResources = {
     },
     attachments: {
       addImage: "Ajouter une image",
+      addConversation: "Ajouter une conversation",
+      conversationPickerTitle: "Joindre une conversation",
+      conversationSearchPlaceholder: "Rechercher des conversations…",
+      conversationEmpty: "Aucune autre conversation dans ce projet",
+      conversationUntitled: "Conversation sans titre",
+      attachConversationFailed: "Échec de l’ajout de la conversation",
+      addPlan: "Ajouter un plan",
+      planTitle: "Plan",
+      planPickerTitle: "Joindre un plan",
+      planSearchPlaceholder: "Rechercher des plans…",
+      planEmpty: "Aucun plan dans ce worktree",
+      planUntitled: "Plan sans titre",
+      attachPlanFailed: "Échec de l’ajout du plan",
       pasteImage: "Coller une image",
       addFile: "Importer un fichier",
       addIssueOrPr: "Ajouter un ticket ou une PR",
@@ -564,6 +577,7 @@ export const fr: TranslationResources = {
       },
       empty: {
         noCommands: "Aucune commande de configuration n’a été exécutée pour cet espace de travail.",
+        notRun: "La configuration n’a pas été exécutée pour cet espace de travail.",
       },
       accessibility: {
         noCommands: "Aucune commande de configuration n’a été exécutée pour cet espace de travail",
@@ -616,6 +630,22 @@ export const fr: TranslationResources = {
       hostDisconnected: "L’hôte n’est pas connecté",
       updateHost: "Mettez à jour l’hôte pour utiliser le rendu natif du terminal.",
       unableToSubscribe: "Impossible de s’abonner au terminal",
+      createFailed: "Échec de la création du terminal",
+    },
+    bottomDock: {
+      collapse: "Réduire le panneau",
+      expand: "Développer le panneau",
+      newTerminal: "Nouveau terminal",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "Aucun script configuré pour ce workspace.",
+        noOutput: "Lancez un script pour voir sa sortie ici.",
+      },
     },
     tabs: {
       loading: "Chargement…",
@@ -1004,6 +1034,12 @@ export const fr: TranslationResources = {
           addingToChat: "Ajout…",
           reply: "Répondre",
           sendingReply: "Envoi…",
+          resolve: "Résoudre",
+          unresolve: "Rouvrir",
+          resolving: "Résolution…",
+          openInDiff: "Ouvrir dans le diff",
+          showResolved: "Afficher les résolus",
+          hideResolved: "Masquer les résolus",
         },
         checksOverview: {
           headline: {
@@ -1054,8 +1090,12 @@ export const fr: TranslationResources = {
         sections: {
           checks: "Vérifications",
           pipeline: "Pipeline",
-          reviews: "Revues",
+          reviewers: "Relecteurs",
           activity: "Activité",
+          stack: "Pile",
+        },
+        stack: {
+          current: "Actuelle",
         },
         empty: {
           noJobs: "Aucun job",
@@ -1093,6 +1133,16 @@ export const fr: TranslationResources = {
           requestedChanges: "A demandé des modifications",
           reviewed: "A relu",
         },
+        reviewers: {
+          empty: "Aucun relecteur pour le moment",
+          requestReviewA11y: "Redemander une revue à {{login}}",
+          status: {
+            approved: "Approuvé",
+            changesRequested: "Modifications demandées",
+            waiting: "En attente",
+            commented: "Commenté",
+          },
+        },
         time: {
           justNow: "à l’instant",
         },
@@ -1105,6 +1155,8 @@ export const fr: TranslationResources = {
           statusLoadFailed: "Impossible de charger le statut de la pull request",
           activityLoadFailed: "Impossible de charger l’activité de la pull request",
           replyFailed: "Impossible de publier la réponse",
+          resolveFailed: "Impossible de mettre à jour le fil",
+          requestReviewFailed: "Impossible de demander une revue",
         },
       },
       forgeSetup: {
@@ -1178,6 +1230,12 @@ export const fr: TranslationResources = {
       working: "En cours",
       done: "Terminé",
     },
+    prStatusBucket: {
+      inReview: "En revue",
+      inProgress: "En cours",
+      backlog: "À faire",
+      done: "Terminé",
+    },
     display: {
       trigger: "Préférences d’affichage",
       heading: "Affichage",
@@ -1185,6 +1243,7 @@ export const fr: TranslationResources = {
         label: "Regroupement",
         project: "Projet",
         status: "Statut",
+        prStatus: "Statut de PR",
         labels: "Libellés",
       },
       titleSource: {
@@ -2856,6 +2915,9 @@ export const fr: TranslationResources = {
         editScript: "Modifier {{name}}",
         runAsService: "Exécuter comme service",
         serviceHint: "Paseo supervise le processus et lui attribue un port via $PASEO_PORT",
+        previewUrl: "URL de preview",
+        previewUrlHint:
+          "Remplace l’URL ouverte par l’aperçu. Utilisez $PASEO_PORT pour le port attribué, ex. http://localhost:$PASEO_PORT/app",
         actions: {
           add: "Ajouter un script",
           edit: "Modifier",
@@ -2881,6 +2943,34 @@ export const fr: TranslationResources = {
         failedTitle: "Impossible d’enregistrer paseo.json",
         failedDescription: "Réessayez ou rechargez la dernière version depuis le disque.",
       },
+      source: {
+        label: "Emplacement de la config",
+        projectFile: "Projet",
+        global: "Cet ordinateur",
+      },
+      migrate: {
+        title: "Enregistrer la config sur cet ordinateur",
+        description:
+          "Copie le paseo.json de ce projet dans vos réglages utilisateur pour ne rien commiter dans le dépôt.",
+        confirmTitle: "Déplacer la config vers cet ordinateur ?",
+        confirmMessage:
+          "Le paseo.json commité est copié dans vos réglages utilisateur. Il reste prioritaire tant que vous ne le supprimez pas du dépôt.",
+        confirmOverwriteMessage:
+          "Une config pour ce projet existe déjà sur cet ordinateur et sera écrasée.",
+        moved: "Config copiée sur cet ordinateur",
+        failedTitle: "Impossible de déplacer la config",
+        committedStillPresentTitle: "paseo.json commité toujours utilisé",
+        committedStillPresentDescription:
+          "Le paseo.json commité reste prioritaire. Supprimez-le du dépôt (et commitez la suppression) pour que la config de cet ordinateur s’applique.",
+      },
+      delete: {
+        confirmTitle: "Supprimer le paseo.json commité ?",
+        confirmMessage:
+          "Supprime paseo.json de la copie de travail pour que la config de cet ordinateur s’applique. Commitez la suppression pour que les nouveaux worktrees ne le restaurent pas.",
+        confirm: "Supprimer le fichier",
+        deleted: "paseo.json commité supprimé",
+        failed: "Impossible de supprimer paseo.json",
+      },
       actions: {
         reload: "Recharger",
         tryAgain: "Réessayer",
@@ -2888,6 +2978,7 @@ export const fr: TranslationResources = {
         saved: "Projet enregistré",
         saving: "Enregistrement…",
         cancel: "Annuler",
+        moveToGlobal: "Déplacer vers cet ordinateur",
       },
     },
   },

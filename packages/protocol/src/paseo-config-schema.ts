@@ -40,6 +40,9 @@ export const PaseoScriptEntryRawSchema = z
     type: z.unknown().optional(),
     command: z.unknown().optional(),
     port: z.unknown().optional(),
+    // Service-only: overrides the preview URL the app opens. Supports a
+    // `$PASEO_PORT` placeholder substituted with the assigned service port.
+    previewUrl: z.string().optional(),
   })
   .passthrough();
 
@@ -49,6 +52,10 @@ export const PaseoWorktreeConfigRawSchema = z
     teardown: PaseoLifecycleCommandRawSchema.optional(),
     terminals: z.unknown().optional(),
     servicePorts: PaseoServicePortAllocationSchema.optional(),
+    // Opt-in base for the per-worktree `PASEO_WORKTREE_PORT`. When set, each
+    // worktree gets a deterministic port `portBase + 10 * slot` (lowest free
+    // slot among live sibling worktrees) instead of a random free port.
+    portBase: z.number().int().min(1).max(65535).optional(),
   })
   .passthrough();
 
@@ -111,6 +118,16 @@ export const ProjectConfigRpcErrorSchema = z.discriminatedUnion("code", [
   z.object({ code: z.literal("write_failed") }),
 ]);
 
+// Where a project config read observes from. "project_file" is the committed
+// paseo.json at the repo root; "global" is the per-project config stored in
+// PASEO_HOME; "effective" is whichever one the daemon actually uses at runtime
+// (project_file wins when both exist).
+export const ProjectConfigSourceSchema = z.enum(["project_file", "global", "effective"]);
+
+// Where a project config write lands. There is no "effective" target — a write
+// always names a concrete layer.
+export const ProjectConfigTargetSchema = z.enum(["project_file", "global"]);
+
 export type PaseoScriptEntryRaw = z.infer<typeof PaseoScriptEntryRawSchema>;
 export type PaseoMetadataGenerationEntry = z.infer<typeof PaseoMetadataGenerationEntrySchema>;
 export type PaseoMetadataGeneration = z.infer<typeof PaseoMetadataGenerationSchema>;
@@ -119,3 +136,5 @@ export type PaseoConfigRaw = z.infer<typeof PaseoConfigRawSchema>;
 export type PaseoConfig = z.infer<typeof PaseoConfigSchema>;
 export type PaseoConfigRevision = z.infer<typeof PaseoConfigRevisionSchema>;
 export type ProjectConfigRpcError = z.infer<typeof ProjectConfigRpcErrorSchema>;
+export type ProjectConfigSource = z.infer<typeof ProjectConfigSourceSchema>;
+export type ProjectConfigTarget = z.infer<typeof ProjectConfigTargetSchema>;

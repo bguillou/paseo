@@ -10,6 +10,7 @@ const INBOUND_PERMISSION = {
   "agent.config.apply.request": ["workspace.write", "hub.execute"],
   "agent.detach.request": "workspace.write",
   "agent.fork_context.request": "workspace.read",
+  "agent.plans.list.request": "workspace.read",
   "agent.provider_subagents.list.request": "workspace.read",
   "agent.provider_subagents.timeline.get.request": "workspace.read",
   "agent.rewind.request": "workspace.write",
@@ -45,6 +46,8 @@ const INBOUND_PERMISSION = {
   "checkout.discard_changes.request": "workspace.write",
   "checkout.forge.get_check_details.request": "workspace.read",
   "checkout.forge.reply_comment.request": "workspace.write",
+  "checkout.forge.resolve_thread.request": "workspace.write",
+  "checkout.forge.request_review.request": "workspace.write",
   "checkout.forge.set_auto_merge.request": "workspace.write",
   "checkout.github.get_check_details.request": "workspace.read",
   "checkout.github.set_auto_merge.request": "workspace.write",
@@ -214,6 +217,8 @@ const INBOUND_PERMISSION = {
   workspace_setup_status_request: "workspace.read",
   "workspace.setup.run.request": "workspace.write",
   write_project_config_request: "workspace.write",
+  "project.config.migrateToGlobal.request": "workspace.write",
+  "project.config.deleteProjectFile.request": "workspace.write",
 } as const satisfies Record<InboundOperation, PermissionRequirement>;
 
 const OUTBOUND_PERMISSION = {
@@ -225,6 +230,7 @@ const OUTBOUND_PERMISSION = {
   "agent.config.apply.response": ["workspace.write", "hub.execute"],
   "agent.detach.response": "workspace.write",
   "agent.fork_context.response": "workspace.read",
+  "agent.plans.list.response": "workspace.read",
   "agent.provider_subagents.list.response": "workspace.read",
   "agent.provider_subagents.timeline.get.response": "workspace.read",
   "agent.provider_subagents.update": "workspace.read",
@@ -270,6 +276,8 @@ const OUTBOUND_PERMISSION = {
   "checkout.discard_changes.response": "workspace.write",
   "checkout.forge.get_check_details.response": "workspace.read",
   "checkout.forge.reply_comment.response": "workspace.write",
+  "checkout.forge.resolve_thread.response": "workspace.write",
+  "checkout.forge.request_review.response": "workspace.write",
   "checkout.forge.set_auto_merge.response": "workspace.write",
   "checkout.github.get_check_details.response": "workspace.read",
   "checkout.github.set_auto_merge.response": "workspace.write",
@@ -443,6 +451,8 @@ const OUTBOUND_PERMISSION = {
   "workspace.setup.run.response": "workspace.write",
   workspace_update: ["workspace.read", "hub.execute"],
   write_project_config_response: "workspace.write",
+  "project.config.migrateToGlobal.response": "workspace.write",
+  "project.config.deleteProjectFile.response": "workspace.write",
 } as const satisfies Record<OutboundOperation, PermissionRequirement>;
 
 export function requiredPermissionForInbound(operation: InboundOperation): PermissionRequirement {

@@ -12,8 +12,18 @@ import { openScheduleForm, type ScheduleFormSnapshot } from "./schedule-form-mod
 type TestSchedule = ScheduleSummary & { serverId: string; serverName: string };
 
 const HOSTS = [
-  { serverId: "host-a", label: "Host A", supportsWorkspaceMultiplicity: true },
-  { serverId: "host-b", label: "Host B", supportsWorkspaceMultiplicity: true },
+  {
+    serverId: "host-a",
+    label: "Host A",
+    supportsWorkspaceMultiplicity: true,
+    supportsExistingWorktree: true,
+  },
+  {
+    serverId: "host-b",
+    label: "Host B",
+    supportsWorkspaceMultiplicity: true,
+    supportsExistingWorktree: true,
+  },
 ] as const;
 
 const MOCK_MODES: AgentMode[] = [{ id: "load-test", label: "Load test" }];
@@ -64,6 +74,7 @@ function target(input: {
   projectName: string;
   cwd: string;
   isGit?: boolean;
+  worktrees?: ScheduleProjectTarget["worktrees"];
 }): ScheduleProjectTarget {
   return {
     optionId: buildProjectOptionId(input.serverId, input.projectKey),
@@ -73,6 +84,7 @@ function target(input: {
     projectName: input.projectName,
     cwd: input.cwd,
     isGit: input.isGit ?? true,
+    worktrees: input.worktrees ?? [],
   };
 }
 
@@ -355,6 +367,8 @@ describe("schedule form model", () => {
       showThinkingField: false,
       showModeField: false,
       showIsolationField: false,
+      showExistingWorktreeOption: false,
+      showExistingWorktreePicker: false,
       showArchiveOnFinishField: false,
     });
 
@@ -366,6 +380,8 @@ describe("schedule form model", () => {
       showThinkingField: false,
       showModeField: false,
       showIsolationField: true,
+      showExistingWorktreeOption: false,
+      showExistingWorktreePicker: false,
       showArchiveOnFinishField: true,
     });
 
@@ -378,6 +394,8 @@ describe("schedule form model", () => {
       showThinkingField: true,
       showModeField: true,
       showIsolationField: true,
+      showExistingWorktreeOption: false,
+      showExistingWorktreePicker: false,
       showArchiveOnFinishField: true,
     });
   });
@@ -728,7 +746,7 @@ describe("schedule form model", () => {
     });
     userEdited.applyProviderSnapshot("host-a", providerSnapshot(ALL_MODELS));
     userEdited.setModel("mock", "model-a");
-    userEdited.setIsolation("local");
+    userEdited.setIsolationMode("local");
 
     applyPreferences(userEdited, savedPreferences);
 
@@ -757,6 +775,136 @@ describe("schedule form model", () => {
       selectedModel: "model-a",
       selectedMode: "load-test",
       isolation: "worktree",
+    });
+  });
+
+  const WORKTREE_TARGET = target({
+    serverId: "host-a",
+    projectKey: "git-project",
+    projectName: "Git Project",
+    cwd: "/repo/git",
+    isGit: true,
+    worktrees: [
+      { workspaceId: "ws-1", label: "feature/login" },
+      { workspaceId: "ws-2", label: "feature/signup" },
+    ],
+  });
+
+  it("derives the 3-way isolation mode and exposes existing worktrees", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: [WORKTREE_TARGET], preferences: {} },
+    });
+    form.setProject(WORKTREE_TARGET.optionId, { label: "Git Project" });
+
+    expect(form.getState().isolationMode).toBe("local");
+    expect(form.getState().disclosure.showExistingWorktreeOption).toBe(true);
+
+    form.setIsolationMode("new-worktree");
+    expect(form.getState()).toMatchObject({
+      isolationMode: "new-worktree",
+      existingWorkspaceId: null,
+      disclosure: { showExistingWorktreePicker: false, showArchiveOnFinishField: true },
+    });
+
+    form.setIsolationMode("existing-worktree");
+    expect(form.getState()).toMatchObject({
+      isolationMode: "existing-worktree",
+      // Entering existing mode auto-selects the first available worktree.
+      existingWorkspaceId: "ws-1",
+      submitExistingWorkspaceId: "ws-1",
+      // Archive-on-finish is hidden for a reused worktree.
+      disclosure: { showExistingWorktreePicker: true, showArchiveOnFinishField: false },
+    });
+
+    form.setExistingWorktree("ws-2");
+    expect(form.getState()).toMatchObject({
+      existingWorkspaceId: "ws-2",
+      existingWorktreeDisplay: { label: "feature/signup" },
+    });
+  });
+
+  it("requires a valid existing worktree before an existing-worktree schedule can submit", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: [WORKTREE_TARGET], preferences: {} },
+    });
+    form.setProject(WORKTREE_TARGET.optionId, { label: "Git Project" });
+    form.applyProviderSnapshot("host-a", providerSnapshot(ALL_MODELS));
+    form.setModel("mock", "model-a");
+    form.setPrompt("Do the thing");
+    form.setCadence({ type: "cron", expression: "0 9 * * *" });
+    form.setIsolationMode("new-worktree");
+    expect(form.getState().canSubmit).toBe(true);
+
+    form.setIsolationMode("existing-worktree");
+    expect(form.getState().existingWorkspaceId).toBe("ws-1");
+    expect(form.getState().canSubmit).toBe(true);
+
+    // A pick that is no longer offered blocks submission (but is not silently dropped).
+    form.setExistingWorktree("ws-gone");
+    expect(form.getState()).toMatchObject({
+      canSubmit: false,
+      existingWorkspaceId: "ws-gone",
+      submitExistingWorkspaceId: "ws-gone",
+    });
+  });
+
+  it("hides the existing-worktree option when the host lacks the capability", () => {
+    const form = openWithHosts({
+      mode: "create",
+      hosts: [{ serverId: "host-a", label: "Host A", supportsWorkspaceMultiplicity: true }],
+      defaults: { serverId: "host-a", projectTargets: [WORKTREE_TARGET], preferences: {} },
+    });
+    form.setProject(WORKTREE_TARGET.optionId, { label: "Git Project" });
+
+    expect(form.getState().disclosure).toMatchObject({
+      showIsolationField: true,
+      showExistingWorktreeOption: false,
+    });
+  });
+
+  it("hides the existing-worktree option when the project has no worktrees", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+
+    expect(form.getState().disclosure).toMatchObject({
+      showIsolationField: true,
+      showExistingWorktreeOption: false,
+    });
+  });
+
+  it("seeds existing-worktree selection when editing a schedule pinned to a worktree", () => {
+    const schedule = scheduleOnHost({
+      serverId: "host-a",
+      serverName: "Host A",
+      cwd: "/repo/git",
+      model: "model-a",
+    });
+    schedule.target = {
+      type: "new-agent",
+      config: {
+        provider: "mock",
+        cwd: "/repo/git",
+        model: "model-a",
+        isolation: "worktree",
+        existingWorkspaceId: "ws-2",
+      },
+    };
+    const form = open({
+      mode: "edit",
+      schedule,
+      defaults: { serverId: null, projectTargets: [WORKTREE_TARGET], preferences: {} },
+    });
+    form.applyProviderSnapshot("host-a", providerSnapshot(ALL_MODELS));
+
+    expect(form.getState()).toMatchObject({
+      isolationMode: "existing-worktree",
+      existingWorkspaceId: "ws-2",
+      existingWorktreeDisplay: { label: "feature/signup" },
     });
   });
 });

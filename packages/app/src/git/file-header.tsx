@@ -5,7 +5,8 @@ import {
   type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { MessageSquare } from "lucide-react-native";
 import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
 import { DiffStat } from "@/components/diff-stat";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
@@ -53,9 +54,28 @@ export interface FileHeaderProps {
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
   onHeaderHeightChange?: (path: string, height: number) => void;
+  /** Number of visible PR review comments anchored to this file. */
+  commentCount?: number;
   testID?: string;
   canvasRendered?: boolean;
   onActiveChange?: (active: boolean) => void;
+}
+
+const foregroundMutedColorMapping = (theme: { colors: { foregroundMuted: string } }) => ({
+  color: theme.colors.foregroundMuted,
+});
+const ThemedMessageSquare = withUnistyles(MessageSquare);
+
+function FileCommentBadge({ count, testID }: { count?: number; testID?: string }) {
+  if (!count || count <= 0) {
+    return null;
+  }
+  return (
+    <View style={styles.commentBadge} testID={testID ? `${testID}-comments` : undefined}>
+      <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
+      <Text style={styles.commentBadgeText}>{count}</Text>
+    </View>
+  );
 }
 
 function fileHeaderAccessibilityState(input: {
@@ -194,6 +214,7 @@ export const FileHeader = memo(function FileHeader({
   onActivate,
   onSelect,
   onHeaderHeightChange,
+  commentCount,
   testID,
   canvasRendered = false,
   onActiveChange,
@@ -273,6 +294,7 @@ export const FileHeader = memo(function FileHeader({
         )}
       </View>
       <View style={styles.right}>
+        <FileCommentBadge count={commentCount} testID={testID} />
         <DiffStat
           additions={file.additions}
           deletions={file.deletions}
@@ -422,6 +444,15 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     flexShrink: 0,
     userSelect: "none",
+  },
+  commentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  commentBadgeText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
   icon: {
     width: WORKSPACE_TREE_ICON_SIZE,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMode } from "@getpaseo/protocol/agent-types";
-import { isPlanningAgentMode, resolveNonPlanningModeId } from "./policy";
+import { isPlanModeSelected, isPlanningAgentMode, resolveNonPlanningModeId } from "./policy";
 
 describe("isPlanningAgentMode", () => {
   it("prefers planning metadata and recognizes existing provider ids", () => {
@@ -33,5 +33,30 @@ describe("resolveNonPlanningModeId", () => {
 
   it("returns null when no non-planning mode exists", () => {
     expect(resolveNonPlanningModeId([modes[0]], "plan")).toBeNull();
+  });
+});
+
+describe("isPlanModeSelected", () => {
+  const modes = [
+    { id: "default", label: "Default", colorTier: "safe" },
+    { id: "plan", label: "Plan", colorTier: "planning" },
+  ] satisfies AgentMode[];
+
+  it("is true when a planning mode is selected", () => {
+    expect(isPlanModeSelected(modes, "plan")).toBe(true);
+  });
+
+  it("is false when a non-planning mode is selected", () => {
+    expect(isPlanModeSelected(modes, "default")).toBe(false);
+  });
+
+  it("falls back to the first mode when the selection is missing", () => {
+    expect(isPlanModeSelected(modes, null)).toBe(false);
+    expect(isPlanModeSelected(modes, "deleted")).toBe(false);
+    expect(isPlanModeSelected([modes[1], modes[0]], undefined)).toBe(true);
+  });
+
+  it("is false when there are no modes", () => {
+    expect(isPlanModeSelected([], "plan")).toBe(false);
   });
 });

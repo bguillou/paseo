@@ -148,6 +148,19 @@ export const en = {
     },
     attachments: {
       addImage: "Add image",
+      addConversation: "Add conversation",
+      conversationPickerTitle: "Attach a conversation",
+      conversationSearchPlaceholder: "Search conversations…",
+      conversationEmpty: "No other conversations in this project",
+      conversationUntitled: "Untitled conversation",
+      attachConversationFailed: "Failed to attach conversation",
+      addPlan: "Add plan",
+      planTitle: "Plan",
+      planPickerTitle: "Attach a plan",
+      planSearchPlaceholder: "Search plans…",
+      planEmpty: "No plans in this worktree",
+      planUntitled: "Untitled plan",
+      attachPlanFailed: "Failed to attach plan",
       pasteImage: "Paste image",
       addFile: "Upload file",
       addIssueOrPr: "Add issue or PR",
@@ -556,6 +569,7 @@ export const en = {
       },
       empty: {
         noCommands: "No setup commands ran for this workspace.",
+        notRun: "Setup has not run for this workspace.",
       },
       accessibility: {
         noCommands: "No setup commands ran for this workspace",
@@ -608,6 +622,22 @@ export const en = {
       hostDisconnected: "Host is not connected",
       updateHost: "Update the host to use the native terminal renderer.",
       unableToSubscribe: "Unable to subscribe to terminal",
+      createFailed: "Failed to create terminal",
+    },
+    bottomDock: {
+      collapse: "Collapse panel",
+      expand: "Expand panel",
+      newTerminal: "New terminal",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "No scripts configured for this workspace.",
+        noOutput: "Run a script to see its output here.",
+      },
     },
     tabs: {
       loading: "Loading...",
@@ -988,6 +1018,12 @@ export const en = {
           addingToChat: "Adding...",
           reply: "Reply",
           sendingReply: "Sending…",
+          resolve: "Resolve",
+          unresolve: "Unresolve",
+          resolving: "Resolving…",
+          openInDiff: "Open in diff",
+          showResolved: "Show resolved",
+          hideResolved: "Hide resolved",
         },
         checksOverview: {
           headline: {
@@ -1038,8 +1074,12 @@ export const en = {
         sections: {
           checks: "Checks",
           pipeline: "Pipeline",
-          reviews: "Reviews",
+          reviewers: "Reviewers",
           activity: "Activity",
+          stack: "Stack",
+        },
+        stack: {
+          current: "Current",
         },
         empty: {
           noJobs: "No jobs",
@@ -1077,6 +1117,16 @@ export const en = {
           requestedChanges: "Requested changes",
           reviewed: "Reviewed",
         },
+        reviewers: {
+          empty: "No reviewers yet",
+          requestReviewA11y: "Re-request review from {{login}}",
+          status: {
+            approved: "Approved",
+            changesRequested: "Changes requested",
+            waiting: "Waiting",
+            commented: "Commented",
+          },
+        },
         time: {
           justNow: "just now",
         },
@@ -1089,6 +1139,8 @@ export const en = {
           statusLoadFailed: "Unable to load pull request status",
           activityLoadFailed: "Unable to load pull request activity",
           replyFailed: "Unable to post reply",
+          resolveFailed: "Unable to update thread",
+          requestReviewFailed: "Unable to request review",
         },
       },
       forgeSetup: {
@@ -1159,6 +1211,12 @@ export const en = {
       working: "Working",
       done: "Done",
     },
+    prStatusBucket: {
+      inReview: "In review",
+      inProgress: "In progress",
+      backlog: "Backlog",
+      done: "Done",
+    },
     display: {
       trigger: "Display preferences",
       heading: "Display",
@@ -1166,6 +1224,7 @@ export const en = {
         label: "Grouping",
         project: "Project",
         status: "Status",
+        prStatus: "PR status",
         labels: "Labels",
       },
       titleSource: {
@@ -2920,6 +2979,9 @@ export const en = {
         editScript: "Edit {{name}}",
         runAsService: "Run as a service",
         serviceHint: "Paseo supervises the process and assigns a port via $PASEO_PORT",
+        previewUrl: "Preview URL",
+        previewUrlHint:
+          "Overrides the URL the preview opens. Use $PASEO_PORT for the assigned port, e.g. http://localhost:$PASEO_PORT/app",
         actions: {
           add: "Add script",
           edit: "Edit",
@@ -2942,6 +3004,34 @@ export const en = {
         failedTitle: "Couldn't save paseo.json",
         failedDescription: "Try again, or reload the latest version from disk.",
       },
+      source: {
+        label: "Config location",
+        projectFile: "Project",
+        global: "This computer",
+      },
+      migrate: {
+        title: "Store config on this computer",
+        description:
+          "Copy this project's paseo.json into your user settings so nothing has to be committed to the repo.",
+        confirmTitle: "Move config to this computer?",
+        confirmMessage:
+          "The committed paseo.json is copied into your user settings. It keeps taking effect until you remove it from the repo.",
+        confirmOverwriteMessage:
+          "A config for this project already exists on this computer and will be overwritten.",
+        moved: "Config copied to this computer",
+        failedTitle: "Couldn't move config",
+        committedStillPresentTitle: "Committed paseo.json still in use",
+        committedStillPresentDescription:
+          "The committed paseo.json takes precedence. Remove it from the repo (and commit the deletion) for this computer's config to apply.",
+      },
+      delete: {
+        confirmTitle: "Remove committed paseo.json?",
+        confirmMessage:
+          "Deletes paseo.json from the working tree so this computer's config takes effect. Commit the deletion so new worktrees don't restore it.",
+        confirm: "Remove file",
+        deleted: "Removed committed paseo.json",
+        failed: "Couldn't remove paseo.json",
+      },
       actions: {
         reload: "Reload",
         tryAgain: "Try again",
@@ -2949,6 +3039,7 @@ export const en = {
         saved: "Project saved",
         saving: "Saving...",
         cancel: "Cancel",
+        moveToGlobal: "Move to this computer",
       },
     },
   },

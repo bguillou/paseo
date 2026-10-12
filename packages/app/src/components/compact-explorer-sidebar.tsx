@@ -160,7 +160,6 @@ export function CompactExplorerSidebar({
 }
 
 interface NativeExplorerSidebarDockProps extends ExplorerSidebarProps {
-  persistenceKey: string;
   containerWidth: number;
 }
 
@@ -170,16 +169,13 @@ export function NativeExplorerSidebarDock({
   workspaceRoot,
   isGit,
   onOpenFile,
-  persistenceKey,
   containerWidth,
 }: NativeExplorerSidebarDockProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isOpen = usePanelStore(selectIsCompactFileExplorerOpen);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
-  const storedWidth = useWorkspaceLayoutStore(
-    (state) => state.explorerSidebarWidthByWorkspace[persistenceKey],
-  );
+  const storedWidth = useWorkspaceLayoutStore((state) => state.explorerSidebarWidth);
   const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
   const visibleWidth = resolveExplorerSidebarWidth({
     requestedWidth: storedWidth,
@@ -201,8 +197,8 @@ export function NativeExplorerSidebarDock({
   const showResizeGrip = useCallback(() => setResizePressed(true), []);
   const hideResizeGrip = useCallback(() => setResizePressed(false), []);
   const commitWidth = useCallback(
-    (width: number) => resizeExplorerSidebar(persistenceKey, width),
-    [persistenceKey, resizeExplorerSidebar],
+    (width: number) => resizeExplorerSidebar(width),
+    [resizeExplorerSidebar],
   );
   const resizeGesture = useMemo(
     () =>

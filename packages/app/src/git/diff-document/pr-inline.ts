@@ -6,6 +6,8 @@ import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 export const PR_INLINE_COMMENT_HEIGHT = 68;
 export const PR_INLINE_EDITOR_HEIGHT = 140;
 export const PR_INLINE_REPLY_BUTTON_HEIGHT = 34;
+/** Height reserved for the resolved/outdated status badge row when it renders. */
+export const PR_INLINE_BADGE_ROW_HEIGHT = 22;
 export const PR_INLINE_GAP = 6;
 export const PR_INLINE_VERTICAL_PADDING = 8;
 
@@ -35,10 +37,16 @@ export interface PrInlineReplyResult {
 
 export interface PrInlineActions {
   threadsByTarget: ReadonlyMap<string, PrInlineThreadData[]>;
+  /** Number of visible comments per file path, for the changed-files comment badge. */
+  commentCountByPath: ReadonlyMap<string, number>;
   /** Thread keys whose reply composer is expanded. */
   openComposerKeys: ReadonlySet<string>;
   onToggleComposer: (threadKey: string, open: boolean) => void;
   onReply: (thread: PrInlineThreadData, body: string) => Promise<PrInlineReplyResult>;
+  /** Attaches the whole thread to the workspace chat. Undefined when attach is unavailable. */
+  onAddThreadToChat?: (threadKey: string) => void;
+  /** Resolves/reopens the thread. Undefined when the daemon can't resolve threads. */
+  onResolveThread?: (input: { threadKey: string; resolved: boolean }) => void;
 }
 
 function threadBlockHeight(thread: PrInlineThreadData, open: boolean): number {
@@ -46,7 +54,10 @@ function threadBlockHeight(thread: PrInlineThreadData, open: boolean): number {
     thread.comments.length * PR_INLINE_COMMENT_HEIGHT +
     Math.max(0, thread.comments.length - 1) * PR_INLINE_GAP;
   const composerHeight = open ? PR_INLINE_EDITOR_HEIGHT : PR_INLINE_REPLY_BUTTON_HEIGHT;
-  return commentsHeight + PR_INLINE_GAP + composerHeight;
+  // The resolved/outdated badge row renders above the comments when present.
+  const badgeHeight =
+    thread.isResolved || thread.isOutdated ? PR_INLINE_BADGE_ROW_HEIGHT + PR_INLINE_GAP : 0;
+  return badgeHeight + commentsHeight + PR_INLINE_GAP + composerHeight;
 }
 
 export interface PrInlineThreadState {
@@ -105,7 +116,14 @@ export function prInlineGeometryKey(prReviewActions?: PrInlineActions): string {
   const threads = [...prReviewActions.threadsByTarget.entries()]
     .map(([target, targetThreads]) => [
       target,
-      targetThreads.map((thread) => `${thread.key}:${thread.comments.length}`).sort(),
+      targetThreads
+        .map(
+          (thread) =>
+            `${thread.key}:${thread.comments.length}:${thread.isResolved ? 1 : 0}${
+              thread.isOutdated ? 1 : 0
+            }`,
+        )
+        .sort(),
     ])
     .sort(([left], [right]) => String(left).localeCompare(String(right)));
   const open = [...prReviewActions.openComposerKeys].sort();

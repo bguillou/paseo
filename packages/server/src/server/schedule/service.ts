@@ -113,6 +113,14 @@ function applyNewAgentConfig(
   if (patch.isolation !== undefined) {
     config.isolation = patch.isolation;
   }
+  if (patch.existingWorkspaceId !== undefined) {
+    const trimmed = patch.existingWorkspaceId?.trim();
+    if (trimmed) {
+      config.existingWorkspaceId = trimmed;
+    } else {
+      delete config.existingWorkspaceId;
+    }
+  }
   return { ...target, config };
 }
 
@@ -237,6 +245,9 @@ export interface ScheduleServiceOptions {
   createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  // COMPAT(scheduleExistingWorktree): added in v0.11.0. Resolves a user-owned worktree
+  // workspace by id so a schedule can reuse it instead of creating a fresh one.
+  resolveExistingWorkspace: (workspaceId: string) => Promise<PersistedWorkspaceRecord | null>;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
@@ -254,6 +265,9 @@ export class ScheduleService {
   private readonly createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  private readonly resolveExistingWorkspace: (
+    workspaceId: string,
+  ) => Promise<PersistedWorkspaceRecord | null>;
   private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
   private readonly now: () => Date;
   private readonly runner: (
@@ -271,6 +285,7 @@ export class ScheduleService {
     this.createAgent = options.createAgent;
     this.createDirectoryWorkspace = options.createDirectoryWorkspace;
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
+    this.resolveExistingWorkspace = options.resolveExistingWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
@@ -606,6 +621,8 @@ export class ScheduleService {
         if (
           updated.target.type === "new-agent" &&
           runningRun.workspaceId &&
+          // A reused existing worktree is user-owned — never archive it on recovery.
+          !updated.target.config.existingWorkspaceId &&
           shouldArchiveScheduleRunWorkspace({
             agentId: runningRun.agentId,
             archiveOnFinish: updated.target.config.archiveOnFinish,
@@ -884,9 +901,12 @@ export class ScheduleService {
     }
     await this.assertNewAgentCwdDirectory(config.cwd);
     let workspace: PersistedWorkspaceRecord | null = null;
+    let reusedWorkspace = false;
     let agentId: string | null = null;
     try {
-      workspace = await this.createScheduleRunWorkspace(config, schedule.prompt);
+      const runWorkspace = await this.createScheduleRunWorkspace(config, schedule.prompt);
+      workspace = runWorkspace.workspace;
+      reusedWorkspace = runWorkspace.reused;
       await this.recordRunWorkspace({
         scheduleId: schedule.id,
         runId,
@@ -947,40 +967,92 @@ export class ScheduleService {
         }),
       };
     } finally {
-      if (
-        workspace &&
-        shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish: config.archiveOnFinish })
-      ) {
-        try {
-          await this.archiveWorkspace(workspace.workspaceId);
-        } catch (error) {
-          this.logger.warn(
-            {
-              err: error,
-              agentId,
-              workspaceId: workspace.workspaceId,
-              scheduleId: schedule.id,
-              runId,
-            },
-            "Failed to archive scheduled workspace after run",
-          );
-        }
-      }
+      await this.archiveRunWorkspaceIfNeeded({
+        workspace,
+        reused: reusedWorkspace,
+        agentId,
+        archiveOnFinish: config.archiveOnFinish,
+        scheduleId: schedule.id,
+        runId,
+      });
+    }
+  }
+
+  private async archiveRunWorkspaceIfNeeded(input: {
+    workspace: PersistedWorkspaceRecord | null;
+    reused: boolean;
+    agentId: string | null;
+    archiveOnFinish?: boolean;
+    scheduleId: string;
+    runId: string;
+  }): Promise<void> {
+    // A reused existing worktree is user-owned, so it is never archived.
+    if (
+      !input.workspace ||
+      input.reused ||
+      !shouldArchiveScheduleRunWorkspace({
+        agentId: input.agentId,
+        archiveOnFinish: input.archiveOnFinish,
+      })
+    ) {
+      return;
+    }
+    try {
+      await this.archiveWorkspace(input.workspace.workspaceId);
+    } catch (error) {
+      this.logger.warn(
+        {
+          err: error,
+          agentId: input.agentId,
+          workspaceId: input.workspace.workspaceId,
+          scheduleId: input.scheduleId,
+          runId: input.runId,
+        },
+        "Failed to archive scheduled workspace after run",
+      );
     }
   }
 
   private async createScheduleRunWorkspace(
     config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
     prompt: string,
-  ): Promise<PersistedWorkspaceRecord> {
+  ): Promise<{ workspace: PersistedWorkspaceRecord; reused: boolean }> {
     const firstAgentContext = { prompt };
+    // A chosen existing worktree is reused as-is, regardless of the local/worktree enum.
+    if (config.existingWorkspaceId) {
+      return { workspace: await this.resolveScheduleExistingWorktree(config), reused: true };
+    }
     switch (config.isolation ?? "local") {
       case "local":
-        return this.createDirectoryWorkspace({ cwd: config.cwd, firstAgentContext });
+        return {
+          workspace: await this.createDirectoryWorkspace({ cwd: config.cwd, firstAgentContext }),
+          reused: false,
+        };
       case "worktree":
-        return (await this.createPaseoWorktreeWorkspace({ cwd: config.cwd, firstAgentContext }))
-          .workspace;
+        return {
+          workspace: (
+            await this.createPaseoWorktreeWorkspace({ cwd: config.cwd, firstAgentContext })
+          ).workspace,
+          reused: false,
+        };
     }
+  }
+
+  private async resolveScheduleExistingWorktree(
+    config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
+  ): Promise<PersistedWorkspaceRecord> {
+    const workspaceId = config.existingWorkspaceId;
+    if (!workspaceId) {
+      throw new Error("resolveScheduleExistingWorktree called without an existing workspace id");
+    }
+    const workspace = await this.resolveExistingWorkspace(workspaceId);
+    if (!workspace || workspace.archivedAt) {
+      throw new ScheduleTargetGoneError(`Worktree ${workspaceId} no longer exists`);
+    }
+    if (workspace.kind !== "worktree") {
+      throw new ScheduleTargetGoneError(`Workspace ${workspaceId} is not a worktree`);
+    }
+    return workspace;
   }
 
   private async assertNewAgentCwdDirectory(cwd: string): Promise<void> {

@@ -2,12 +2,13 @@ import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { SIDEBAR_UNLABELLED_LABEL_KEY, type SidebarLabelFilter } from "@/stores/sidebar-view-store";
 import type { StatusBucket, StatusGroup } from "@/hooks/sidebar-status-view-model";
+import type { PrStatusBucket, PrStatusGroup } from "@/hooks/sidebar-pr-status-view-model";
 
 export interface SidebarWorkspaceGroup {
   key: string;
   label: string;
   rows: SidebarWorkspaceEntry[];
-  leading: { kind: "status"; bucket: StatusBucket };
+  leading: { kind: "status"; bucket: StatusBucket } | { kind: "pr_status"; bucket: PrStatusBucket };
 }
 
 export function statusWorkspaceGroups(groups: readonly StatusGroup[]): SidebarWorkspaceGroup[] {
@@ -16,6 +17,17 @@ export function statusWorkspaceGroups(groups: readonly StatusGroup[]): SidebarWo
     label: group.label,
     rows: group.rows,
     leading: { kind: "status", bucket: group.bucket },
+  }));
+}
+
+export function prStatusWorkspaceGroups(groups: readonly PrStatusGroup[]): SidebarWorkspaceGroup[] {
+  return groups.map((group) => ({
+    // Prefixed so the shared collapse-state set never confuses a PR-status "done" with the agent
+    // status mode's "done".
+    key: `pr_status:${group.bucket}`,
+    label: group.label,
+    rows: group.rows,
+    leading: { kind: "pr_status", bucket: group.bucket },
   }));
 }
 

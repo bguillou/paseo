@@ -38,7 +38,11 @@ import {
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
-import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
+import {
+  INLINE_IMAGE_PREVIEW_BOUNDS,
+  resolveInlineImageSize,
+  type InlineImageDimensions,
+} from "./inline-image-size";
 import {
   getAssistantImageMetadata,
   setAssistantImageMetadata,
@@ -84,6 +88,8 @@ export interface MarkdownRendererProps {
   allowedImageHandlers?: readonly string[];
   topLevelMaxExceededItem?: ReactNode;
   enableHtmlish?: boolean;
+  /** Render block images as small thumbnails that open the full image when tapped. */
+  imagePreview?: boolean;
 }
 
 export function MarkdownRenderer({
@@ -95,8 +101,12 @@ export function MarkdownRenderer({
   allowedImageHandlers,
   topLevelMaxExceededItem,
   enableHtmlish = true,
+  imagePreview = false,
 }: MarkdownRendererProps) {
-  const markdownRules = useMemo(() => rules ?? createSharedMarkdownRules(), [rules]);
+  const markdownRules = useMemo(
+    () => rules ?? createSharedMarkdownRules({ imagePreview }),
+    [rules, imagePreview],
+  );
   const parts = useMemo(
     () => (enableHtmlish ? splitHtmlishMarkdown(text) : [{ kind: "markdown" as const, text }]),
     [enableHtmlish, text],
@@ -109,10 +119,12 @@ export function MarkdownRenderer({
       onLinkPress,
       allowedImageHandlers,
       topLevelMaxExceededItem,
+      imagePreview,
     }),
     [
       allowedImageHandlers,
       compact,
+      imagePreview,
       markdownRules,
       markdownit,
       onLinkPress,
@@ -166,7 +178,13 @@ function MarkdownPart({
   }
 
   if (part.kind === "inlineImage") {
-    return <MarkdownInlineImage part={part} onLinkPress={rendererProps.onLinkPress} />;
+    return (
+      <MarkdownInlineImage
+        part={part}
+        onLinkPress={rendererProps.onLinkPress}
+        preview={rendererProps.imagePreview}
+      />
+    );
   }
 
   if (part.text.length === 0) {
@@ -245,24 +263,33 @@ function useNaturalImageDimensions(part: MarkdownInlineImagePart): {
 function MarkdownInlineImage({
   part,
   onLinkPress,
+  preview = false,
 }: {
   part: Extract<MarkdownDisplayPart, { kind: "inlineImage" }>;
   onLinkPress?: (url: string) => boolean;
+  preview?: boolean;
 }) {
   const { natural: naturalDimensions } = useNaturalImageDimensions(part);
   const explicitDimensions = useMemo(
     () => ({ width: part.width, height: part.height }),
     [part.height, part.width],
   );
+  // In preview mode a bare image (no wrapping link) opens its own source, so a comment
+  // thumbnail is still reachable at full size.
+  const openTarget = part.href ?? (preview ? part.src : undefined);
   const handlePress = useCallback(() => {
-    if (!part.href) return;
-    if (onLinkPress?.(part.href) === false) return;
-    void openExternalUrl(part.href);
-  }, [onLinkPress, part.href]);
+    if (!openTarget) return;
+    if (onLinkPress?.(openTarget) === false) return;
+    void openExternalUrl(openTarget);
+  }, [onLinkPress, openTarget]);
   const source = useMemo(() => ({ uri: part.src }), [part.src]);
   const imageSize = useMemo(
-    () => resolveInlineImageSize({ explicit: explicitDimensions, natural: naturalDimensions }),
-    [explicitDimensions, naturalDimensions],
+    () =>
+      resolveInlineImageSize(
+        { explicit: explicitDimensions, natural: naturalDimensions },
+        preview ? INLINE_IMAGE_PREVIEW_BOUNDS : undefined,
+      ),
+    [explicitDimensions, naturalDimensions, preview],
   );
   const imageStyle = useMemo(() => [detailsStyles.inlineImage, imageSize], [imageSize]);
 
@@ -275,7 +302,7 @@ function MarkdownInlineImage({
     />
   );
 
-  if (!part.href) {
+  if (!openTarget) {
     return <View style={detailsStyles.inlineImageWrap}>{image}</View>;
   }
 
@@ -284,6 +311,31 @@ function MarkdownInlineImage({
       {image}
     </Pressable>
   );
+}
+
+/**
+ * Renders a markdown `image` AST node (nested images the htmlish splitter leaves in the
+ * text) through the size-capped {@link MarkdownInlineImage} instead of the library default.
+ * Building the synthetic part in a memo keeps it out of the rule's JSX scope.
+ */
+function MarkdownRuleImage({
+  src,
+  alt,
+  width,
+  height,
+  preview,
+}: {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  preview: boolean;
+}) {
+  const part = useMemo<MarkdownInlineImagePart>(
+    () => ({ kind: "inlineImage", src, alt, width, height }),
+    [alt, height, src, width],
+  );
+  return <MarkdownInlineImage part={part} preview={preview} />;
 }
 
 const FLOW_IMAGE_MAX_HEIGHT = 18;
@@ -502,7 +554,17 @@ function getMarkdownLinkHref(node: ASTNode): string {
   return typeof href === "string" ? href : "";
 }
 
-export function createSharedMarkdownRules(): RenderRules {
+/** Coerce an image dimension attribute (markdown has none; inline HTML may) to a positive number. */
+function toFiniteImageDimension(value: unknown): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function createSharedMarkdownRules(options?: { imagePreview?: boolean }): RenderRules {
+  const imagePreview = options?.imagePreview ?? false;
   return {
     text: (
       node: ASTNode,
@@ -724,6 +786,30 @@ export function createSharedMarkdownRules(): RenderRules {
         {colorMarkdownLinkChildren(children, styles.link.color)}
       </SharedMarkdownLink>
     ),
+    // Images nested inside paragraphs/blockquotes/lists are not extracted by htmlish,
+    // so without this rule react-native-markdown-display renders them full-bleed via
+    // FitImage. Route them through the same size-capped renderer as standalone images.
+    image: (node: ASTNode, _children: ReactNode[], _parent: ASTNode[]) => {
+      const attributes = (node.attributes ?? {}) as {
+        src?: string;
+        alt?: string;
+        width?: unknown;
+        height?: unknown;
+      };
+      if (!attributes.src) {
+        return null;
+      }
+      return (
+        <MarkdownRuleImage
+          key={node.key}
+          src={attributes.src}
+          alt={attributes.alt ?? ""}
+          width={toFiniteImageDimension(attributes.width)}
+          height={toFiniteImageDimension(attributes.height)}
+          preview={imagePreview}
+        />
+      );
+    },
   };
 }
 

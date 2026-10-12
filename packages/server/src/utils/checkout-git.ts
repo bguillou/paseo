@@ -36,8 +36,10 @@ import {
   branchNameFromRef,
   getPaseoWorktreeChangeRequestHintForBranch,
   type PaseoWorktreeMetadata,
+  readBaseRefOverride,
   readPaseoWorktreeMetadata,
   rebindPaseoWorktreeChangeRequestHint,
+  storedBaseRefFromOverride,
 } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
@@ -59,6 +61,8 @@ export type GitMutationRefreshReason =
   | "enable-pr-auto-merge"
   | "disable-pr-auto-merge"
   | "reply-comment"
+  | "resolve-thread"
+  | "request-review"
   | "create-pr"
   | "switch-branch"
   | "rename-branch"
@@ -466,6 +470,47 @@ export async function resolveBranchCheckout(
   }
 
   return { kind: "not-found" };
+}
+
+export interface BaseRefForBranchName {
+  name: string;
+  ref: string;
+}
+
+// Resolves a branch name to the exact ref to compare a checkout against. Unlike
+// resolveBranchCheckout (which picks the local branch because that is what gets checked out),
+// a comparison base prefers the origin remote-tracking ref: the background fetch keeps it
+// current, while a local copy of the default branch is often months stale and would make the
+// committed diff and commit list span everything merged since. Bare names fall back to the
+// local branch when origin has no copy; an explicit `origin/<name>` stays on the remote.
+export async function resolveBaseRefForBranchName(
+  cwd: string,
+  name: string,
+): Promise<BaseRefForBranchName | null> {
+  await requireGitRepo(cwd);
+  const trimmed = name.trim();
+  if (trimmed.startsWith("origin/")) {
+    const remoteName = trimmed.slice("origin/".length);
+    const remoteRef = `refs/remotes/${trimmed}`;
+    return (await doesGitRefExist(cwd, remoteRef)) ? { name: remoteName, ref: remoteRef } : null;
+  }
+  const normalized = normalizeBranchSuggestionName(trimmed);
+  if (!normalized) {
+    return null;
+  }
+  const originRef = `refs/remotes/origin/${normalized}`;
+  const localRef = `refs/heads/${normalized}`;
+  const [hasOrigin, hasLocal] = await Promise.all([
+    doesGitRefExist(cwd, originRef),
+    doesGitRefExist(cwd, localRef),
+  ]);
+  if (hasOrigin) {
+    return { name: normalized, ref: originRef };
+  }
+  if (hasLocal) {
+    return { name: normalized, ref: localRef };
+  }
+  return null;
 }
 
 export type BranchCheckoutSource = "local" | "remote";
@@ -884,6 +929,11 @@ export interface CheckoutDiffCompare {
   baseRef?: string;
   ignoreWhitespace?: boolean;
   includeStructured?: boolean;
+  // Live diff subscriptions keep sending the base they saw when they subscribed. After a
+  // re-point that hint is stale, so the subscription path marks its base advisory: follow
+  // the stored base instead of failing the request. Explicit one-shot operations leave this
+  // unset and keep the mismatch guard.
+  baseRefAdvisory?: boolean;
 }
 
 export interface MergeToBaseOptions {
@@ -903,6 +953,12 @@ export interface CheckoutContext {
   logger?: Pick<Logger, "trace" | "warn">;
   facts?: CheckoutSnapshotFacts | null;
   runGitCommand?: RunGitCommand;
+  /**
+   * Base branch of the workspace's associated PR (from the forge). Used as the diff base
+   * when nothing is explicitly stored, so stacked PRs (base = another feature branch, not
+   * origin/HEAD) diff against the right base.
+   */
+  pullRequestBaseRef?: string | null;
 }
 
 export type CheckoutSnapshotFacts =
@@ -1253,7 +1309,9 @@ async function getStoredBaseRefForCwd(
   }
   const paseoWorktree = await getPaseoWorktreeForCwd(cwd, { context });
   if (!paseoWorktree.isPaseoOwnedWorktree) {
-    return null;
+    // Non-Paseo checkouts read their base from the override sidecar.
+    const worktreeRoot = await getWorktreeRoot(cwd, context);
+    return worktreeRoot ? storedBaseRefFromOverride(readBaseRefOverride(worktreeRoot)) : null;
   }
 
   return readPaseoWorktreeBaseRef(paseoWorktree.worktreeRoot);
@@ -1309,12 +1367,19 @@ function resolveOperationBaseRef(input: {
   storedBaseRef: string | null;
   resolvedBaseRef: string | null;
   requestedBaseRef?: string;
+  advisory?: boolean;
 }): string | null {
   if (
     input.storedBaseRef &&
     input.requestedBaseRef &&
     !isSameBaseRef(input.storedBaseRef, input.requestedBaseRef)
   ) {
+    // Advisory callers (live diff subscriptions) carry a base from subscribe time that a
+    // re-point has since superseded; the stored base is authoritative, so follow it rather
+    // than erroring and leaving the committed diff stuck on the old base.
+    if (input.advisory) {
+      return input.storedBaseRef;
+    }
     throw baseRefMismatchError({
       stored: input.storedBaseRef,
       requested: input.requestedBaseRef,
@@ -1592,6 +1657,18 @@ export async function resolveRepositoryDefaultBranch(
 
 async function resolveBaseRef(repoRoot: string, context?: CheckoutContext): Promise<string | null> {
   return resolveRepositoryDefaultBranch(repoRoot, context);
+}
+
+// Resolves a PR base branch name (e.g. "refactor/foo") to the exact ref to diff against.
+// The forge's base is a remote branch, so its origin remote-tracking ref wins over a local
+// copy. Returns null when the branch can't be found, so resolution falls through to origin/HEAD.
+async function resolvePullRequestBaseRef(cwd: string, name: string): Promise<string | null> {
+  try {
+    const resolved = await resolveBaseRefForBranchName(cwd, name);
+    return resolved?.ref ?? null;
+  } catch {
+    return null;
+  }
 }
 
 interface ComparisonBaseRefName {
@@ -2042,8 +2119,20 @@ export async function getCheckoutSnapshotFacts(
   const paseoWorktreeMetadata = inspected.paseoWorktree.isPaseoOwnedWorktree
     ? readPaseoWorktreeMetadata(inspected.paseoWorktree.worktreeRoot)
     : null;
-  const storedBaseRef = storedBaseRefFromMetadata(paseoWorktreeMetadata);
-  const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd, context));
+  // Paseo worktrees persist their base in worktree.json; other checkouts use the
+  // base-ref override sidecar. Either way a stored base wins over live derivation.
+  const storedBaseRef = inspected.paseoWorktree.isPaseoOwnedWorktree
+    ? storedBaseRefFromMetadata(paseoWorktreeMetadata)
+    : storedBaseRefFromOverride(readBaseRefOverride(inspected.worktreeRoot));
+  // With no explicitly stored base, prefer the associated PR's base over origin/HEAD so a
+  // stacked PR (base = another feature branch) diffs against the right base — which is also
+  // what lets inline review comments anchor to the forge's diff.
+  const pullRequestBaseRef =
+    storedBaseRef === null && context?.pullRequestBaseRef
+      ? await resolvePullRequestBaseRef(cwd, context.pullRequestBaseRef)
+      : null;
+  const resolvedBaseRef =
+    storedBaseRef ?? pullRequestBaseRef ?? (await resolveBaseRef(cwd, context));
   const mainRepoRoot = await getMainRepoRootFromCommonDir(
     cwd,
     inspected.gitCommonDir,
@@ -3373,6 +3462,7 @@ async function resolveCheckoutDiffRefs(
     storedBaseRef,
     resolvedBaseRef,
     requestedBaseRef: compare.baseRef,
+    advisory: compare.baseRefAdvisory,
   });
   if (!baseRef) {
     return null;

@@ -1192,6 +1192,28 @@ export class AgentManager {
     return this.timelineStore.getRows(id);
   }
 
+  /**
+   * Reads an agent's committed timeline rows without requiring it to be loaded
+   * or resumed. Used by read-only cross-agent queries (e.g. listing the plans
+   * produced across a worktree) where resuming every agent would be wasteful and
+   * have side effects. Prefers the durable store, which holds committed rows for
+   * agents that are not live; falls back to the in-memory store when an agent is
+   * live and no durable store is configured. Returns [] for an unknown agent.
+   */
+  async readPersistedTimelineRows(id: string): Promise<AgentTimelineRow[]> {
+    const normalizedId = validateAgentId(id, "readPersistedTimelineRows");
+    if (this.durableTimelineStore) {
+      return projectTimelineRows({
+        rows: await this.durableTimelineStore.getCommittedRows(normalizedId),
+        mode: "projected",
+      }).map((entry) => Object.assign({ seq: entry.seqEnd }, entry));
+    }
+    if (this.agents.has(normalizedId)) {
+      return this.timelineStore.getRows(normalizedId);
+    }
+    return [];
+  }
+
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     this.requireAgent(id);
     return this.timelineStore.fetch(id, options);

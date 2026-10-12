@@ -264,6 +264,9 @@ export class CheckoutDiffManager {
           baseRef: compare.baseRef,
           ignoreWhitespace: compare.ignoreWhitespace,
           includeStructured: true,
+          // The subscription's base is a subscribe-time hint; after a re-point the stored
+          // base wins so the committed diff follows instead of erroring on a stale base.
+          baseRefAdvisory: true,
         },
         options?.force
           ? { force: true, reason: options.reason ?? "checkout-diff-refresh" }

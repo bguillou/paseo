@@ -27,12 +27,30 @@ function getWebTextInputElement(input: EditingTextInputHandle | null): HTMLEleme
 export function PrReplyComposer({
   onSubmit,
   testID,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   onSubmit: (body: string) => Promise<{ ok: boolean; error: string | null }>;
   testID?: string;
+  /** Controlled open state. When set, the collapsed "Reply" trigger renders nothing (the
+   * caller owns it) and this component only renders the expanded composer. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (isControlled) {
+        onOpenChange?.(next);
+      } else {
+        setInternalOpen(next);
+      }
+    },
+    [isControlled, onOpenChange],
+  );
   const [body, setBody] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [pending, setPending] = useState(false);
@@ -47,12 +65,12 @@ export function PrReplyComposer({
     }
   }, [open]);
 
-  const handleOpen = useCallback(() => setOpen(true), []);
+  const handleOpen = useCallback(() => setOpen(true), [setOpen]);
   const handleCancel = useCallback(() => {
     setOpen(false);
     setBody("");
     setError(null);
-  }, []);
+  }, [setOpen]);
   const handleFocus = useCallback(() => setIsFocused(true), []);
   const handleBlur = useCallback(() => setIsFocused(false), []);
 
@@ -70,7 +88,7 @@ export function PrReplyComposer({
       return;
     }
     setError(result.error);
-  }, [onSubmit, pending, trimmed]);
+  }, [onSubmit, pending, setOpen, trimmed]);
 
   useEffect(() => {
     const element = getWebTextInputElement(inputRef.current);
@@ -101,6 +119,10 @@ export function PrReplyComposer({
   );
 
   if (!open) {
+    // Controlled callers render their own trigger (e.g. aligned with other actions).
+    if (isControlled) {
+      return null;
+    }
     return (
       <View style={styles.triggerRow}>
         <Button

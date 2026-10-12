@@ -5,6 +5,7 @@ import {
   CircleDot,
   FileText,
   GitPullRequest,
+  ListTodo,
   MessageSquareCode,
   MousePointer2,
 } from "lucide-react-native";
@@ -50,6 +51,9 @@ function getTextAttachmentSubtitle(
 ): string {
   if (attachment.contextKind === "chat_history") {
     return "Previous conversation";
+  }
+  if (attachment.contextKind === "plan") {
+    return "Plan";
   }
   return t("message.attachments.text");
 }
@@ -133,6 +137,13 @@ export function getWorkspaceAttachmentPillContent(
       subtitle: getTextAttachmentSubtitle(attachment.attachment, t),
     };
   }
+  if (attachment.kind === "plan_context") {
+    return {
+      icon: attachmentPlanIcon,
+      title: attachment.attachment.title ?? t("composer.attachments.planTitle"),
+      subtitle: getTextAttachmentSubtitle(attachment.attachment, t),
+    };
+  }
   return {
     icon: attachmentReviewIcon,
     title: t("message.attachments.review"),
@@ -141,6 +152,7 @@ export function getWorkspaceAttachmentPillContent(
 }
 
 const ThemedAttachmentFileText = withUnistyles(FileText);
+const ThemedAttachmentListTodo = withUnistyles(ListTodo);
 const ThemedAttachmentGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedAttachmentCircleDot = withUnistyles(CircleDot);
 const ThemedAttachmentMessageSquareCode = withUnistyles(MessageSquareCode);
@@ -159,6 +171,9 @@ const attachmentGithubIssueIcon = (
 );
 const attachmentFileIcon = (
   <ThemedAttachmentFileText size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
+);
+const attachmentPlanIcon = (
+  <ThemedAttachmentListTodo size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
 );
 const attachmentBrowserIcon = (
   <ThemedAttachmentMousePointer size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />

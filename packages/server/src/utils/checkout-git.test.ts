@@ -40,6 +40,7 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   resolveBranchCheckout,
+  resolveBaseRefForBranchName,
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
   renameCurrentBranch,
@@ -61,6 +62,7 @@ import {
   type CreateWorktreeOptions,
   type WorktreeConfig,
 } from "./worktree.js";
+import { updatePaseoWorktreeBaseRef } from "./worktree-metadata.js";
 
 interface LegacyCreateWorktreeTestOptions {
   branchName: string;
@@ -93,6 +95,7 @@ function createLegacyWorktreeForTest(
 import {
   getPaseoWorktreeMetadataPath,
   readPaseoWorktreeMetadata,
+  writeBaseRefOverride,
   writePaseoWorktreeMetadata,
 } from "./worktree-metadata.js";
 
@@ -579,6 +582,83 @@ describe("checkout git utilities", () => {
     expect(commands.filter((command) => command === "config --get remote.fork.url")).toHaveLength(
       1,
     );
+  });
+
+  it("resolves the PR base ref when no base is stored (stacked PR)", async () => {
+    // Stacked PR: head branches off another feature branch, not off main.
+    execFileSync("git", ["checkout", "-b", "stacked-base"], { cwd: repoDir });
+    commitFile(repoDir, "base.txt", "base\n", "stacked base work");
+    execFileSync("git", ["checkout", "-b", "feature/stacked"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature work");
+
+    const withoutPr = await getCheckoutSnapshotFacts(repoDir, { paseoHome });
+    const withPr = await getCheckoutSnapshotFacts(repoDir, {
+      paseoHome,
+      pullRequestBaseRef: "stacked-base",
+    });
+
+    expect(withoutPr.isGit && withoutPr.resolvedBaseRef).not.toBe("refs/heads/stacked-base");
+    expect(withPr.isGit && withPr.resolvedBaseRef).toBe("refs/heads/stacked-base");
+  });
+
+  it("prefers a stored base override over the PR base", async () => {
+    execFileSync("git", ["checkout", "-b", "stacked-base"], { cwd: repoDir });
+    commitFile(repoDir, "base.txt", "base\n", "stacked base work");
+    execFileSync("git", ["checkout", "-b", "override-base"], { cwd: repoDir });
+    commitFile(repoDir, "override.txt", "override\n", "override base work");
+    execFileSync("git", ["checkout", "-b", "feature/stacked"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature work");
+    writeBaseRefOverride(repoDir, {
+      baseRefName: "override-base",
+      baseRef: "refs/heads/override-base",
+    });
+
+    const facts = await getCheckoutSnapshotFacts(repoDir, {
+      paseoHome,
+      pullRequestBaseRef: "stacked-base",
+    });
+
+    expect(facts.isGit && facts.resolvedBaseRef).toBe("refs/heads/override-base");
+  });
+
+  it("diffs a PR base against its origin ref when the local copy is stale", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    // origin/main moves ahead; the local main stays where it was.
+    commitFile(cloneDir, "upstream.txt", "upstream\n", "upstream work");
+    execFileSync("git", ["push", "origin", "main"], { cwd: cloneDir });
+    execFileSync("git", ["fetch", "origin"], { cwd: repoDir });
+    execFileSync("git", ["checkout", "-b", "feature/stacked", "origin/main"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature work");
+
+    const facts = await getCheckoutSnapshotFacts(repoDir, {
+      paseoHome,
+      pullRequestBaseRef: "main",
+    });
+    expect(facts.isGit && facts.resolvedBaseRef).toBe("refs/remotes/origin/main");
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "base" }, { paseoHome, facts });
+    expect(diff.diff).toContain("feature.txt");
+    expect(diff.diff).not.toContain("upstream.txt");
+  });
+
+  it("resolves a base branch name to its origin ref before a local branch", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["branch", "local-only"], { cwd: repoDir });
+
+    await expect(resolveBaseRefForBranchName(repoDir, "main")).resolves.toEqual({
+      name: "main",
+      ref: "refs/remotes/origin/main",
+    });
+    await expect(resolveBaseRefForBranchName(repoDir, "origin/main")).resolves.toEqual({
+      name: "main",
+      ref: "refs/remotes/origin/main",
+    });
+    await expect(resolveBaseRefForBranchName(repoDir, "local-only")).resolves.toEqual({
+      name: "local-only",
+      ref: "refs/heads/local-only",
+    });
+    await expect(resolveBaseRefForBranchName(repoDir, "missing")).resolves.toBeNull();
+    await expect(resolveBaseRefForBranchName(repoDir, "origin/missing")).resolves.toBeNull();
   });
 
   it("reuses checkout snapshot facts across status, shortstat, and PR status reads", async () => {
@@ -3630,6 +3710,61 @@ const x = 1;
     await expect(
       getCheckoutDiff(worktree.worktreePath, { mode: "base", baseRef: "other" }, { paseoHome }),
     ).rejects.toThrow("Base ref mismatch: stored refs/heads/main, requested other");
+  });
+
+  it("follows the re-pointed stored base for an advisory diff while rejecting explicit stale bases", async () => {
+    // develop branches off main with its own commit, so a worktree cut from develop has a
+    // different merge-base against main than against develop — making the base swap visible.
+    execFileSync("git", ["checkout", "-b", "develop"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "dev.txt"), "dev\n");
+    execFileSync("git", ["add", "dev.txt"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "develop change"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["checkout", "main"], { cwd: repoDir });
+
+    const worktree = await createLegacyWorktreeForTest({
+      branchName: "advisory-feature",
+      cwd: repoDir,
+      baseBranch: "develop",
+      worktreeSlug: "advisory-feature",
+      paseoHome,
+    });
+    writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
+    execFileSync("git", ["add", "feature.txt"], { cwd: worktree.worktreePath });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature commit"], {
+      cwd: worktree.worktreePath,
+    });
+
+    // Baseline: the stored base is develop, so the committed diff shows only the feature work.
+    const beforeRepoint = await getCheckoutDiff(
+      worktree.worktreePath,
+      { mode: "base", baseRef: "develop" },
+      { paseoHome },
+    );
+    expect(beforeRepoint.diff).toContain("feature.txt");
+    expect(beforeRepoint.diff).not.toContain("dev.txt");
+
+    // Re-point the stored base to main (the non-destructive metadata rewrite set_base_ref does).
+    updatePaseoWorktreeBaseRef(worktree.worktreePath, {
+      baseRefName: "main",
+      baseRef: "refs/heads/main",
+    });
+
+    // An explicit caller sending the now-stale base still hits the mismatch guard.
+    await expect(
+      getCheckoutDiff(worktree.worktreePath, { mode: "base", baseRef: "develop" }, { paseoHome }),
+    ).rejects.toThrow("Base ref mismatch");
+
+    // The live subscription path keeps sending "develop" too, but as an advisory hint, so it
+    // follows the stored base (main) and the committed diff now includes develop's dev.txt.
+    const afterRepoint = await getCheckoutDiff(
+      worktree.worktreePath,
+      { mode: "base", baseRef: "develop", baseRefAdvisory: true },
+      { paseoHome },
+    );
+    expect(afterRepoint.diff).toContain("feature.txt");
+    expect(afterRepoint.diff).toContain("dev.txt");
   });
 
   it("excludes dirty working tree changes from Paseo worktree base diffs", async () => {

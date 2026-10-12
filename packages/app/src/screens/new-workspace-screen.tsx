@@ -2418,6 +2418,7 @@ export function NewWorkspaceScreen({
       textReplacement={chatDraft.textReplacement}
       attachments={chatDraft.attachments}
       attachmentScopeKeys={visibleDraftContextScopeKeys}
+      chatHistoryAttachmentScopeKey={draftContextScopeKey}
       onChangeAttachments={chatDraft.setAttachments}
       onForgeChangeRequestDetected={handleForgeChangeRequestDetected}
       onForgeChangeRequestAutoAttach={handleForgeChangeRequestAutoAttach}

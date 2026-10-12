@@ -91,6 +91,21 @@ export interface ChatHistoryContextAttachment {
   };
 }
 
+export type PlanContextOutcome = "pending" | "approved" | "rejected" | "canceled";
+
+export interface PlanContextAttachment {
+  kind: "plan_context";
+  id: string;
+  attachment: Extract<AgentAttachment, { type: "text" }>;
+  source: {
+    serverId: string;
+    agentId: string;
+    planKey: string;
+    createdAt: number;
+    outcome: PlanContextOutcome;
+  };
+}
+
 export const NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER = "new-workspace-picker";
 
 export type WorkspaceFileSelection =
@@ -127,6 +142,7 @@ export type WorkspaceComposerAttachment =
     }
   | PullRequestContextAttachment
   | ChatHistoryContextAttachment
+  | PlanContextAttachment
   | {
       kind: "review";
       attachment: Extract<AgentAttachment, { type: "review" }>;

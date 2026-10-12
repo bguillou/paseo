@@ -518,8 +518,58 @@ describe("mapPrPaneData", () => {
     ).toBe("pending");
   });
 
-  it("leaves awaiting reviewers intentionally unwired", () => {
-    expect(mapPrPaneData(baseStatus, baseTimeline)?.awaitingReviewers).toEqual([]);
+  it("has no reviewers when the server omits them", () => {
+    const data = mapPrPaneData(baseStatus, baseTimeline);
+    expect(data?.reviewers).toEqual([]);
+    expect(data?.awaitingReviewers).toEqual([]);
+  });
+
+  it("maps the reviewer roster with each reviewer's state", () => {
+    const data = mapPrPaneData(
+      status({
+        reviewers: [
+          { login: "octocat", avatarUrl: "https://img/o.png", state: "approved" },
+          { login: "hubot", state: "changes_requested" },
+          { login: "monalisa", state: "commented" },
+          { login: "ada", state: "pending" },
+          { login: "core", state: "pending", isTeam: true },
+        ],
+      }),
+      baseTimeline,
+    );
+    expect(data?.reviewers).toEqual([
+      {
+        login: "octocat",
+        avatarUrl: "https://img/o.png",
+        avatarColor: expect.any(String),
+        state: "approved",
+      },
+      { login: "hubot", avatarColor: expect.any(String), state: "changes_requested" },
+      { login: "monalisa", avatarColor: expect.any(String), state: "commented" },
+      { login: "ada", avatarColor: expect.any(String), state: "pending" },
+      { login: "core", avatarColor: expect.any(String), state: "pending", isTeam: true },
+    ]);
+    // awaitingReviewers lists the logins still pending a review.
+    expect(data?.awaitingReviewers).toEqual(["ada", "core"]);
+  });
+
+  it("treats an unknown reviewer state as pending (awaiting)", () => {
+    const data = mapPrPaneData(
+      status({
+        reviewers: [{ login: "octocat", state: "dismissed" }],
+      }),
+      baseTimeline,
+    );
+    expect(data?.reviewers[0]?.state).toBe("pending");
+  });
+
+  it("threads the head and base branch refs through", () => {
+    const data = mapPrPaneData(
+      status({ headRefName: "feature/stacked", baseRefName: "feature/base" }),
+      baseTimeline,
+    );
+    expect(data?.headRefName).toBe("feature/stacked");
+    expect(data?.baseRefName).toBe("feature/base");
   });
 
   it("defaults the forge to github and omits the project path when neither is supplied", () => {

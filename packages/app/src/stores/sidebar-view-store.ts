@@ -5,7 +5,7 @@ import { z } from "zod";
 import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
-export type SidebarGroupMode = "project" | "status";
+export type SidebarGroupMode = "project" | "status" | "pr_status";
 
 const SIDEBAR_VIEW_STORAGE_KEY = "sidebar-view";
 const LEGACY_SIDEBAR_GROUP_MODE_STORAGE_KEY = "sidebar-group-mode";
@@ -79,7 +79,7 @@ interface SidebarViewPersistedState {
   labelFilter: SidebarLabelFilter;
 }
 
-const PersistedSidebarGroupModeSchema = z.enum(["project", "status", "label"]);
+const PersistedSidebarGroupModeSchema = z.enum(["project", "status", "label", "pr_status"]);
 const SidebarLabelFilterSchema = z.object({
   labels: z.array(z.string()),
 });
@@ -118,6 +118,12 @@ function readHostFilters(persistedState: SidebarViewStorageState): string[] {
   return legacyHostFilter ? [legacyHostFilter] : [];
 }
 
+// The persisted schema tolerates `"label"` (a scaffolded, not-yet-selectable mode) and the absent
+// case, neither of which is a real `SidebarGroupMode`; both fall back to the default grouping.
+function coerceGroupMode(mode: SidebarViewStorageState["groupMode"]): SidebarGroupMode {
+  return mode === "status" || mode === "pr_status" ? mode : "project";
+}
+
 export function migrateSidebarViewState(persistedState: unknown): SidebarViewPersistedState {
   const result = SidebarViewPersistedStateSchema.safeParse(persistedState);
   if (!result.success) {
@@ -141,7 +147,7 @@ export function migrateSidebarViewState(persistedState: unknown): SidebarViewPer
   }
 
   return {
-    groupMode: state.groupMode === "status" ? "status" : "project",
+    groupMode: coerceGroupMode(state.groupMode),
     hostFilters: readHostFilters(state),
     projectFilters: state.projectFilters ?? [],
     labelFilter: state.labelFilter

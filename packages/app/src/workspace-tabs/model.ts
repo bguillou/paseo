@@ -14,6 +14,8 @@ export interface WorkspaceDraftTabSetup {
 export interface WorkspaceWorkingDiffTabTarget {
   kind: "working_diff";
   focusPath?: string;
+  /** New-side line to scroll to within `focusPath` (e.g. jumping to a PR comment). */
+  focusLine?: number;
   focusRequestId?: number;
 }
 

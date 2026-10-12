@@ -21,6 +21,7 @@ import type {
 import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { runWithGitCommandPriority } from "../utils/run-git-command.js";
 import { WorkspaceAutomationBlockedError } from "./workspace-automation-gate.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 
 export type ActiveWorkspaceRef = Pick<
   PersistedWorkspaceRecord,
@@ -52,6 +53,9 @@ export interface ArchiveDependencies {
   killTerminalsForWorkspace: (workspaceId: string) => Promise<void>;
   stopWorkspaceSetup?: (workspaceId: string) => Promise<void>;
   assertWorkspaceAutomationAllowed?: (workspaceId: string) => Promise<void>;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for a teardown cwd. When absent, reads the committed paseo.json.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   sessionLogger?: Logger;
 }
 
@@ -370,10 +374,14 @@ async function maybeRemoveDirectory(
       teardownTargets,
     );
     for (const teardownTarget of uniqueTeardownTargets(allowedTeardownTargets)) {
+      const effectiveConfig = dependencies.resolveEffectiveConfig
+        ? await dependencies.resolveEffectiveConfig(teardownTarget.cwd)
+        : undefined;
       await runWorktreeTeardownCommands({
         worktreePath: backing.path,
         teardownCwd: teardownTarget.cwd,
         repoRootPath: backing.mainRepoRoot ?? undefined,
+        ...(effectiveConfig !== undefined ? { config: effectiveConfig } : {}),
       });
     }
   } catch (error) {

@@ -27,7 +27,14 @@ import {
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
 import { shortenPath } from "@/utils/shorten-path";
 import { normalizeScheduleFormCadence } from "./schedule-cadence-options";
-import { PROJECT_OPTION_PREFIX, type ScheduleProjectTarget } from "./schedule-project-targets";
+import {
+  PROJECT_OPTION_PREFIX,
+  type ScheduleProjectTarget,
+  type ScheduleWorktreeOption,
+} from "./schedule-project-targets";
+
+/** The three isolation choices the UI offers; maps to wire isolation + existingWorkspaceId. */
+export type ScheduleIsolationMode = "local" | "new-worktree" | "existing-worktree";
 
 export interface ScheduleFormDisplay {
   label: string;
@@ -38,6 +45,7 @@ export interface ScheduleFormHost {
   serverId: string;
   label: string;
   supportsWorkspaceMultiplicity?: boolean;
+  supportsExistingWorktree?: boolean;
 }
 
 export interface ScheduleFormSnapshot {
@@ -62,6 +70,10 @@ export interface ScheduleDisclosureState {
   showThinkingField: boolean;
   showModeField: boolean;
   showIsolationField: boolean;
+  /** Whether the isolation dropdown offers the "existing worktree" choice. */
+  showExistingWorktreeOption: boolean;
+  /** Whether the existing-worktree picker is shown (existing-worktree mode active). */
+  showExistingWorktreePicker: boolean;
   showArchiveOnFinishField: boolean;
 }
 
@@ -108,8 +120,16 @@ export interface ScheduleFormState {
   archiveOnFinish: boolean;
   isolation: "local" | "worktree";
   effectiveIsolation: "local" | "worktree";
+  /** The existing worktree workspace to reuse; null means create a fresh worktree. */
+  existingWorkspaceId: string | null;
+  /** Existing worktrees selectable for the current project. */
+  existingWorktreeOptions: ScheduleWorktreeOption[];
+  existingWorktreeDisplay: ScheduleFormDisplay | null;
+  /** The 3-way isolation choice derived from effectiveIsolation + existingWorkspaceId. */
+  isolationMode: ScheduleIsolationMode;
   submitArchiveOnFinish: boolean | undefined;
   submitIsolation: "local" | "worktree" | undefined;
+  submitExistingWorkspaceId: string | undefined;
   canUseWorktreeIsolation: boolean;
   providerResolutionByServerId: Record<string, ProviderResolutionStatus>;
   providerSnapshotRequest: ScheduleProviderSnapshotRequest | null;
@@ -135,7 +155,8 @@ export interface ScheduleFormModel {
   setPrompt: (value: string) => void;
   setMaxRuns: (value: string) => void;
   setCadence: (value: ScheduleCadence) => void;
-  setIsolation: (value: "local" | "worktree") => void;
+  setIsolationMode: (value: ScheduleIsolationMode) => void;
+  setExistingWorktree: (workspaceId: string) => void;
   setArchiveOnFinish: (value: boolean) => void;
   setSubmitError: (value: string | null) => void;
 }
@@ -451,6 +472,12 @@ function resolveInitialIsolation(input: {
   return input.preferences?.isolation ?? "local";
 }
 
+function resolveInitialExistingWorkspaceId(
+  config: ReturnType<typeof newAgentConfig>,
+): string | null {
+  return config?.existingWorkspaceId ?? null;
+}
+
 function resolveSelectedProjectOptionId(target: ScheduleProjectTarget | null): string {
   return target?.optionId ?? "";
 }
@@ -488,6 +515,46 @@ function selectedHostSupportsWorkspaceMultiplicity(input: {
   );
 }
 
+function selectedHostSupportsExistingWorktree(input: {
+  hosts: readonly ScheduleFormHost[];
+  selectedServerId: string | null;
+}): boolean {
+  return (
+    input.hosts.find((entry) => entry.serverId === input.selectedServerId)
+      ?.supportsExistingWorktree === true
+  );
+}
+
+function resolveExistingWorktreeOptions(input: {
+  targets: readonly ScheduleProjectTarget[];
+  serverId: string | null;
+  cwd: string;
+}): ScheduleWorktreeOption[] {
+  const target = resolveProjectTarget(input);
+  return target ? [...target.worktrees] : [];
+}
+
+function resolveExistingWorktreeDisplay(input: {
+  options: readonly ScheduleWorktreeOption[];
+  existingWorkspaceId: string | null;
+}): ScheduleFormDisplay | null {
+  if (!input.existingWorkspaceId) {
+    return null;
+  }
+  const match = input.options.find((option) => option.workspaceId === input.existingWorkspaceId);
+  return match ? { label: match.label } : null;
+}
+
+function resolveIsolationMode(input: {
+  effectiveIsolation: "local" | "worktree";
+  existingWorkspaceId: string | null;
+}): ScheduleIsolationMode {
+  if (input.effectiveIsolation !== "worktree") {
+    return "local";
+  }
+  return input.existingWorkspaceId ? "existing-worktree" : "new-worktree";
+}
+
 function resolveEffectiveIsolation(input: {
   isolation: "local" | "worktree";
   canUseWorktreeIsolation: boolean;
@@ -517,6 +584,8 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
       showThinkingField: false,
       showModeField: false,
       showIsolationField: false,
+      showExistingWorktreeOption: false,
+      showExistingWorktreePicker: false,
       showArchiveOnFinishField: false,
     };
   }
@@ -526,15 +595,31 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   const hasSelectedModel = Boolean(state.selectedProvider && state.selectedModel.trim());
   const showProjectField = state.mode === "edit" || Boolean(state.selectedServerId);
   const showModelField = hasProject;
+  const showIsolationField = hasProject && state.canUseWorktreeIsolation;
+  const supportsExistingWorktree = selectedHostSupportsExistingWorktree({
+    hosts: state.hosts,
+    selectedServerId: state.selectedServerId,
+  });
+  // Offer the "existing worktree" choice when the host supports it and either there
+  // are worktrees to pick or the schedule is already pinned to one (stale edit case).
+  const showExistingWorktreeOption =
+    showIsolationField &&
+    supportsExistingWorktree &&
+    (state.existingWorktreeOptions.length > 0 || state.isolationMode === "existing-worktree");
+  const showExistingWorktreePicker =
+    showExistingWorktreeOption && state.isolationMode === "existing-worktree";
   return {
     showProjectField,
     showModelField,
     showThinkingField:
       showModelField && hasSelectedModel && state.availableThinkingOptions.length > 0,
     showModeField: showModelField && hasSelectedProvider && state.modeOptions.length > 0,
-    showIsolationField: hasProject && state.canUseWorktreeIsolation,
+    showIsolationField,
+    showExistingWorktreeOption,
+    showExistingWorktreePicker,
     showArchiveOnFinishField:
       hasProject &&
+      state.isolationMode !== "existing-worktree" &&
       selectedHostSupportsWorkspaceMultiplicity({
         hosts: state.hosts,
         selectedServerId: state.selectedServerId,
@@ -556,6 +641,13 @@ function resolveCanSubmit(state: ScheduleFormState): boolean {
   }
   if (!hasWorkingDir) {
     return false;
+  }
+  // An existing-worktree schedule must point at a worktree that still exists.
+  if (state.isolationMode === "existing-worktree") {
+    const picked = state.existingWorkspaceId;
+    if (!picked || !state.existingWorktreeOptions.some((option) => option.workspaceId === picked)) {
+      return false;
+    }
   }
   return isSelectedModelValidForProviders({
     providers: state.modelSelectorProviders,
@@ -591,6 +683,25 @@ function updateDerivedState(input: {
     selectedServerId: input.state.selectedServerId,
     providerResolutionByServerId: input.state.providerResolutionByServerId,
   });
+  const existingWorktreeOptions = resolveExistingWorktreeOptions({
+    targets: input.targets,
+    serverId: input.state.selectedServerId,
+    cwd: input.state.workingDir,
+  });
+  const isolationMode = resolveIsolationMode({
+    effectiveIsolation,
+    existingWorkspaceId: input.state.existingWorkspaceId,
+  });
+  const supportsExistingWorktree = selectedHostSupportsExistingWorktree({
+    hosts: input.hosts,
+    selectedServerId: input.state.selectedServerId,
+  });
+  const submitExistingWorkspaceId =
+    canSubmitWorkspaceLifecycleOptions &&
+    supportsExistingWorktree &&
+    isolationMode === "existing-worktree"
+      ? (input.state.existingWorkspaceId ?? undefined)
+      : undefined;
   const projectTarget = resolveProjectTarget({
     targets: input.targets,
     serverId: input.state.selectedServerId,
@@ -620,10 +731,18 @@ function updateDerivedState(input: {
     availableThinkingOptions,
     canUseWorktreeIsolation,
     effectiveIsolation,
-    submitArchiveOnFinish: canSubmitWorkspaceLifecycleOptions
-      ? input.state.archiveOnFinish
-      : undefined,
+    existingWorktreeOptions,
+    existingWorktreeDisplay: resolveExistingWorktreeDisplay({
+      options: existingWorktreeOptions,
+      existingWorkspaceId: input.state.existingWorkspaceId,
+    }),
+    isolationMode,
+    submitArchiveOnFinish:
+      canSubmitWorkspaceLifecycleOptions && isolationMode !== "existing-worktree"
+        ? input.state.archiveOnFinish
+        : undefined,
     submitIsolation: canSubmitWorkspaceLifecycleOptions ? effectiveIsolation : undefined,
+    submitExistingWorkspaceId,
   };
   const disclosure = resolveDisclosure(nextState);
   return { ...nextState, disclosure, canSubmit: resolveCanSubmit({ ...nextState, disclosure }) };
@@ -682,8 +801,13 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     archiveOnFinish: config?.archiveOnFinish ?? true,
     isolation: resolveInitialIsolation({ config, preferences: snapshot.defaults.preferences }),
     effectiveIsolation: "local",
+    existingWorkspaceId: resolveInitialExistingWorkspaceId(config),
+    existingWorktreeOptions: [],
+    existingWorktreeDisplay: null,
+    isolationMode: "local",
     submitArchiveOnFinish: undefined,
     submitIsolation: undefined,
+    submitExistingWorkspaceId: undefined,
     canUseWorktreeIsolation: false,
     providerResolutionByServerId: buildInitialProviderResolution(providerSnapshotRequest),
     providerSnapshotRequest,
@@ -693,6 +817,8 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
       showThinkingField: false,
       showModeField: false,
       showIsolationField: false,
+      showExistingWorktreeOption: false,
+      showExistingWorktreePicker: false,
       showArchiveOnFinishField: false,
     },
     canSubmit: false,
@@ -1016,6 +1142,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           workingDir: "",
           projectDisplay: null,
           selectedProjectOptionId: "",
+          existingWorkspaceId: null,
           providerResolutionByServerId: {},
         }),
       );
@@ -1039,6 +1166,8 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         workingDir: target.cwd,
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
+        // Worktrees belong to a project; a new project invalidates the chosen one.
+        existingWorkspaceId: providerScopeChanged ? null : state.existingWorkspaceId,
       };
       publish(providerScopeChanged ? clearProviderSelection(nextState) : nextState);
       if (!providerScopeChanged) {
@@ -1114,9 +1243,28 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       const cadence = normalizeScheduleFormCadence(value, timezone);
       publish({ ...state, cadence, submitCadence: cadence });
     },
-    setIsolation(value) {
+    setIsolationMode(value) {
       userModified = { ...userModified, isolation: true };
-      publish({ ...state, isolation: value });
+      if (value === "local") {
+        publish({ ...state, isolation: "local", existingWorkspaceId: null });
+        return;
+      }
+      if (value === "new-worktree") {
+        publish({ ...state, isolation: "worktree", existingWorkspaceId: null });
+        return;
+      }
+      // existing-worktree: keep the current pick when still valid, else default to the first.
+      const current = state.existingWorkspaceId;
+      const options = state.existingWorktreeOptions;
+      const picked =
+        current && options.some((option) => option.workspaceId === current)
+          ? current
+          : (options[0]?.workspaceId ?? null);
+      publish({ ...state, isolation: "worktree", existingWorkspaceId: picked });
+    },
+    setExistingWorktree(workspaceId) {
+      userModified = { ...userModified, isolation: true };
+      publish({ ...state, isolation: "worktree", existingWorkspaceId: workspaceId });
     },
     setArchiveOnFinish(value) {
       publish({ ...state, archiveOnFinish: value });

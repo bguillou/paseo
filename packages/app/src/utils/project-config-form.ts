@@ -17,6 +17,7 @@ export interface ProjectScriptDraft {
   commandOriginalKind: LifecycleOriginalKind;
   type: string;
   portText: string;
+  previewUrlText: string;
   rawEntry: PaseoScriptEntryRaw;
 }
 
@@ -122,6 +123,7 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
       commandOriginalKind: command.kind,
       type: projectScriptType(entry.type),
       portText: projectScriptPort(entry.port),
+      previewUrlText: typeof entry.previewUrl === "string" ? entry.previewUrl : "",
       rawEntry: entry,
     });
   }
@@ -197,6 +199,13 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
       delete nextEntry.port;
     } else {
       nextEntry.port = nextPort;
+    }
+    // previewUrl is service-only; drop it for plain scripts or when cleared.
+    const trimmedPreviewUrl = row.previewUrlText.trim();
+    if (trimmedType === "service" && trimmedPreviewUrl.length > 0) {
+      nextEntry.previewUrl = trimmedPreviewUrl;
+    } else {
+      delete nextEntry.previewUrl;
     }
     nextScripts[trimmedName] = nextEntry as PaseoScriptEntryRaw;
   }

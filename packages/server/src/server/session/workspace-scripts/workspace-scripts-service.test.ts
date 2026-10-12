@@ -25,6 +25,7 @@ import type {
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import { createWorkspaceScriptsService } from "./workspace-scripts-service.js";
 import { deriveProjectServiceSlug } from "../../workspace-git-metadata.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 
 // The production module reads only WorkspaceGitService.{peekSnapshot,getProjectSlug},
 // WorkspaceRegistry.get, and forwards the launcher + opaque managers to the injected
@@ -82,6 +83,7 @@ interface BuildOptions {
   spawnThrows?: string;
   gitService?: Pick<WorkspaceGitService, "peekSnapshot">;
   automationError?: Error;
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
 }
 
 function buildService(options: BuildOptions = {}) {
@@ -130,6 +132,9 @@ function buildService(options: BuildOptions = {}) {
     assertAutomationAllowed: async () => {
       if (options.automationError) throw options.automationError;
     },
+    ...(options.resolveEffectiveConfig
+      ? { resolveEffectiveConfig: options.resolveEffectiveConfig }
+      : {}),
   });
 
   return { service, emitted, published, spawnCalls };
@@ -217,6 +222,29 @@ describe("buildSnapshot", () => {
     );
     await service.start({ ...request, workspaceId: workspace.workspaceId });
     expect(spawnCalls[0]?.branchName).toBe(workspace.branch);
+  });
+});
+
+describe("list", () => {
+  test("returns the effective-config scripts when the worktree has no paseo.json", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
+    tempDirs.push(dir);
+    const { service } = buildService({
+      workspace: { workspaceId: "ws-1", cwd: dir } as PersistedWorkspaceRecord,
+      resolveEffectiveConfig: async () => ({
+        scripts: { app: { type: "service", command: "npm run app", port: 3000 } },
+      }),
+    });
+    expect((await service.list("ws-1")).map((script) => script.scriptName)).toEqual(["app"]);
+  });
+
+  test("returns no scripts without a resolver when the worktree has no paseo.json", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
+    tempDirs.push(dir);
+    const { service } = buildService({
+      workspace: { workspaceId: "ws-1", cwd: dir } as PersistedWorkspaceRecord,
+    });
+    expect(await service.list("ws-1")).toEqual([]);
   });
 });
 

@@ -60,6 +60,8 @@ $PASEO_HOME/
 │   ├── workspaces.json                  # Workspace registry
 │   ├── workspace-labels.json            # Shared host-local label catalog
 │   ├── workspace-labels.transaction.json # Recoverable catalog/assignment compound commit
+│   ├── configs/
+│   │   └── {projectId}.json             # User/global per-project config (uncommitted paseo.json)
 │   └── icons/                           # Host-local custom project icon images
 ├── runtime/
 │   └── managed-processes/
@@ -534,6 +536,24 @@ publish only after the commit point; publication failure does not roll durable s
 history surfaces tolerate transient orphaned workspaces by omitting those rows so one bad FK cannot
 blank the whole History screen, but mutation paths should repair or remove the orphaned state rather
 than treating it as valid.
+
+### Global per-project config
+
+**Path:** `$PASEO_HOME/projects/configs/{projectId}.json`
+
+The user/global layer for a project's config. The body has the same shape as a committed
+`paseo.json` (`PaseoConfigRawSchema`) so a project can be configured without committing a file to its
+repo. Keyed by the registry `projectId`, so every worktree of a project shares one config. Written
+atomically with the same `{ mtimeMs, size }` optimistic-concurrency revision the committed file uses,
+isolated from `projects.json` so config edits never race reconciliation. Owned by
+`GlobalProjectConfigStore` (`packages/server/src/server/project-config/global-project-config-store.ts`).
+
+**Precedence:** the committed `<repoRoot>/paseo.json` wins. The global config applies only when no
+committed file is present. `EffectiveProjectConfigResolver` resolves this once for every runtime
+consumer (worktree setup/teardown, terminals, scripts, service ports); the editor RPCs read/write a
+named layer (`source`/`target` = `project_file` | `global`, with `effective` reporting the winner).
+`project.config.migrateToGlobal` copies the committed file into this layer; the committed file keeps
+winning until `project.config.deleteProjectFile` removes it from the working tree.
 
 ---
 

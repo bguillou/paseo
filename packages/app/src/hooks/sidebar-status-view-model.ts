@@ -47,14 +47,17 @@ export function buildStatusGroups(
     const rows = bucketRows.get(bucket);
     if (!rows || rows.length === 0) continue;
 
-    rows.sort((a, b) => compareStatusRows(a, b, projectNamesByViewKey));
+    rows.sort((a, b) => compareSidebarWorkspaceRows(a, b, projectNamesByViewKey));
     groups.push({ bucket, label: getStatusBucketLabel(bucket, t), rows });
   }
 
   return groups;
 }
 
-function compareStatusRows(
+// Shared by every grouped sidebar mode: most recently entered first, then project name, then
+// workspace name, then key as the stable tiebreak. Keeps the order within a bucket identical
+// whichever grouping produced the bucket.
+export function compareSidebarWorkspaceRows(
   a: SidebarWorkspaceEntry,
   b: SidebarWorkspaceEntry,
   projectNamesByViewKey: Map<string, string>,

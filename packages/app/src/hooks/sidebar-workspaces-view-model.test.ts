@@ -109,6 +109,29 @@ describe("createSidebarWorkspaceEntry workspace directory label", () => {
   });
 });
 
+describe("createSidebarWorkspaceEntry message activity", () => {
+  it("reads hasUserMessage from the workspace agent activity index", () => {
+    const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+
+    const prompted = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: descriptor,
+      workspaceAgentActivity: new Map([
+        [descriptor.id, { agentId: "a", status: "done", enteredAt: null, hasUserMessage: true }],
+      ]),
+    });
+    expect(prompted.hasUserMessage).toBe(true);
+  });
+
+  it("defaults hasUserMessage to false when the workspace has no activity entry", () => {
+    const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+
+    const entry = createSidebarWorkspaceEntry({ serverId: "srv", workspace: descriptor });
+
+    expect(entry.hasUserMessage).toBe(false);
+  });
+});
+
 interface OrderedItem {
   key: string;
 }

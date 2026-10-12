@@ -153,6 +153,19 @@ export const ru: TranslationResources = {
     },
     attachments: {
       addImage: "Добавить изображение",
+      addConversation: "Добавить разговор",
+      conversationPickerTitle: "Прикрепить разговор",
+      conversationSearchPlaceholder: "Поиск разговоров…",
+      conversationEmpty: "В этом проекте нет других разговоров",
+      conversationUntitled: "Разговор без названия",
+      attachConversationFailed: "Не удалось прикрепить разговор",
+      addPlan: "Добавить план",
+      planTitle: "План",
+      planPickerTitle: "Прикрепить план",
+      planSearchPlaceholder: "Поиск планов…",
+      planEmpty: "В этом worktree нет планов",
+      planUntitled: "План без названия",
+      attachPlanFailed: "Не удалось прикрепить план",
       pasteImage: "Вставить изображение",
       addFile: "Загрузить файл",
       addIssueOrPr: "Добавить проблему или PR",
@@ -564,6 +577,7 @@ export const ru: TranslationResources = {
       },
       empty: {
         noCommands: "Для этого рабочего пространства не выполнялись команды настройки.",
+        notRun: "Настройка для этого рабочего пространства не выполнялась.",
       },
       accessibility: {
         noCommands: "Для этого рабочего пространства не выполнялись команды настройки.",
@@ -618,6 +632,22 @@ export const ru: TranslationResources = {
       hostDisconnected: "Хост не подключён",
       updateHost: "Обновите хост, чтобы использовать нативный рендерер терминала.",
       unableToSubscribe: "Не удалось подключиться к терминалу",
+      createFailed: "Не удалось создать терминал",
+    },
+    bottomDock: {
+      collapse: "Свернуть панель",
+      expand: "Развернуть панель",
+      newTerminal: "Новый терминал",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "Для этого воркспейса не настроены скрипты.",
+        noOutput: "Запустите скрипт, чтобы увидеть его вывод здесь.",
+      },
     },
     tabs: {
       loading: "Загрузка...",
@@ -997,6 +1027,12 @@ export const ru: TranslationResources = {
           addingToChat: "Добавление...",
           reply: "Ответить",
           sendingReply: "Отправка…",
+          resolve: "Решить",
+          unresolve: "Переоткрыть",
+          resolving: "Обработка…",
+          openInDiff: "Открыть в диффе",
+          showResolved: "Показать решённые",
+          hideResolved: "Скрыть решённые",
         },
         checksOverview: {
           headline: {
@@ -1047,8 +1083,12 @@ export const ru: TranslationResources = {
         sections: {
           checks: "Проверки",
           pipeline: "Пайплайн",
-          reviews: "Ревью",
+          reviewers: "Рецензенты",
           activity: "Активность",
+          stack: "Стек",
+        },
+        stack: {
+          current: "Текущий",
         },
         empty: {
           noJobs: "Нет заданий",
@@ -1086,6 +1126,16 @@ export const ru: TranslationResources = {
           requestedChanges: "Запрошены изменения",
           reviewed: "Проведено ревью",
         },
+        reviewers: {
+          empty: "Пока нет рецензентов",
+          requestReviewA11y: "Повторно запросить ревью у {{login}}",
+          status: {
+            approved: "Одобрено",
+            changesRequested: "Запрошены изменения",
+            waiting: "Ожидание",
+            commented: "Прокомментировано",
+          },
+        },
         time: {
           justNow: "прямо сейчас",
         },
@@ -1098,6 +1148,8 @@ export const ru: TranslationResources = {
           statusLoadFailed: "Не удалось загрузить статус PR",
           activityLoadFailed: "Не удалось загрузить активность PR",
           replyFailed: "Не удалось отправить ответ",
+          resolveFailed: "Не удалось обновить обсуждение",
+          requestReviewFailed: "Не удалось запросить ревью",
         },
       },
       forgeSetup: {
@@ -1168,6 +1220,12 @@ export const ru: TranslationResources = {
       working: "В работе",
       done: "Готово",
     },
+    prStatusBucket: {
+      inReview: "На проверке",
+      inProgress: "В процессе",
+      backlog: "Бэклог",
+      done: "Готово",
+    },
     display: {
       trigger: "Настройки отображения",
       heading: "Отображение",
@@ -1175,6 +1233,7 @@ export const ru: TranslationResources = {
         label: "Группировка",
         project: "Проект",
         status: "Статус",
+        prStatus: "Статус PR",
         labels: "Метки",
       },
       titleSource: {
@@ -2843,6 +2902,9 @@ export const ru: TranslationResources = {
         editScript: "Изменить {{name}}",
         runAsService: "Запускать как сервис",
         serviceHint: "Paseo управляет процессом и назначает порт через переменную $PASEO_PORT.",
+        previewUrl: "URL предпросмотра",
+        previewUrlHint:
+          "Переопределяет URL, который открывает предпросмотр. Используйте $PASEO_PORT для назначенного порта, напр. http://localhost:$PASEO_PORT/app",
         actions: {
           add: "Добавить скрипт",
           edit: "Редактировать",
@@ -2867,6 +2929,34 @@ export const ru: TranslationResources = {
         failedTitle: "Не удалось сохранить paseo.json.",
         failedDescription: "Повторите попытку или загрузите с диска последнюю версию paseo.json.",
       },
+      source: {
+        label: "Расположение конфигурации",
+        projectFile: "Проект",
+        global: "Этот компьютер",
+      },
+      migrate: {
+        title: "Хранить конфигурацию на этом компьютере",
+        description:
+          "Копирует paseo.json этого проекта в ваши пользовательские настройки, чтобы ничего не нужно было коммитить в репозиторий.",
+        confirmTitle: "Переместить конфигурацию на этот компьютер?",
+        confirmMessage:
+          "Закоммиченный paseo.json копируется в ваши пользовательские настройки. Он продолжает действовать, пока вы не удалите его из репозитория.",
+        confirmOverwriteMessage:
+          "Конфигурация для этого проекта уже есть на этом компьютере и будет перезаписана.",
+        moved: "Конфигурация скопирована на этот компьютер",
+        failedTitle: "Не удалось переместить конфигурацию",
+        committedStillPresentTitle: "Закоммиченный paseo.json всё ещё используется",
+        committedStillPresentDescription:
+          "Закоммиченный paseo.json имеет приоритет. Удалите его из репозитория (и закоммитьте удаление), чтобы применилась конфигурация этого компьютера.",
+      },
+      delete: {
+        confirmTitle: "Удалить закоммиченный paseo.json?",
+        confirmMessage:
+          "Удаляет paseo.json из рабочего дерева, чтобы вступила в силу конфигурация этого компьютера. Закоммитьте удаление, чтобы новые рабочие деревья его не восстанавливали.",
+        confirm: "Удалить файл",
+        deleted: "Закоммиченный paseo.json удалён",
+        failed: "Не удалось удалить paseo.json",
+      },
       actions: {
         reload: "Загрузить заново",
         tryAgain: "Повторить",
@@ -2874,6 +2964,7 @@ export const ru: TranslationResources = {
         saved: "Проект сохранён.",
         saving: "Сохранение...",
         cancel: "Отмена",
+        moveToGlobal: "Переместить на этот компьютер",
       },
     },
   },

@@ -245,6 +245,18 @@ Setup, teardown, scripts, and services all see:
 - `$PASEO_BRANCH_NAME`, the worktree's branch
 - `$PASEO_WORKTREE_PORT`, legacy per-worktree port (prefer `$PASEO_PORT` inside services)
 
+`$PASEO_WORKTREE_PORT` is a random free port by default, assigned once and then reused for the life of the worktree. Set `worktree.portBase` to make it deterministic instead:
+
+```json
+{
+  "worktree": {
+    "portBase": 55000
+  }
+}
+```
+
+Each worktree then gets `portBase + 10 * slot`, where `slot` is the lowest 10-port block not held by a live sibling worktree — so the first worktree gets `55000`, the next `55010`, and so on. The assignment persists per worktree, so re-running keeps the same port, and a slot is recycled once its worktree is archived. The 10-port gap leaves room for a worktree's own services to sit beside its base port.
+
 Services additionally get:
 
 - `$PASEO_PORT`, this service's assigned port

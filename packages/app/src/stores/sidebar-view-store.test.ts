@@ -119,6 +119,14 @@ describe("sidebar view store", () => {
     });
   });
 
+  it("preserves the pr_status group mode through migration", () => {
+    expect(migrateSidebarViewState({ groupMode: "pr_status" }).groupMode).toBe("pr_status");
+  });
+
+  it("coerces the scaffolded-but-unselectable label group mode back to project", () => {
+    expect(migrateSidebarViewState({ groupMode: "label" }).groupMode).toBe("project");
+  });
+
   it("clears only the label facet", () => {
     useSidebarViewStore.setState({
       groupMode: "status",

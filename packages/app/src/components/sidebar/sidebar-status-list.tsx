@@ -22,6 +22,7 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { StatusBucket } from "@/hooks/sidebar-status-view-model";
+import type { PrStatusBucket } from "@/hooks/sidebar-pr-status-view-model";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import { SidebarFilterEmptyState } from "@/components/sidebar/empty-states";
 import type { HostBadgeModel } from "@/hosts/appearance";
@@ -36,8 +37,10 @@ import {
   ChevronRight,
   CircleAlert,
   CircleCheck,
+  CircleDashed,
   CircleDot,
   CircleX,
+  GitPullRequest,
 } from "lucide-react-native";
 import { useToast } from "@/contexts/toast-context";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
@@ -104,8 +107,10 @@ const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
+const ThemedCircleDashed = withUnistyles(CircleDashed);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleX = withUnistyles(CircleX);
+const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const EMPTY_SHORTCUT_INDEX = new Map<string, number>();
 
 function statusWorkspaceKeyExtractor(workspace: SidebarWorkspaceEntry): string {
@@ -467,7 +472,11 @@ function StatusGroupLeadingVisual({
   showChevron: boolean;
 }) {
   if (!showChevron) {
-    return <StatusGroupIcon bucket={leading.bucket} />;
+    return leading.kind === "pr_status" ? (
+      <PrStatusGroupIcon bucket={leading.bucket} />
+    ) : (
+      <StatusGroupIcon bucket={leading.bucket} />
+    );
   }
   if (collapsed) {
     return <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />;
@@ -485,6 +494,19 @@ function StatusGroupIcon({ bucket }: { bucket: StatusBucket }) {
       return <ThemedCircleCheck size={14} uniProps={attentionColorMapping} />;
     case "running":
       return <ThemedCircleDot size={14} uniProps={runningColorMapping} />;
+    case "done":
+      return <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />;
+  }
+}
+
+function PrStatusGroupIcon({ bucket }: { bucket: PrStatusBucket }) {
+  switch (bucket) {
+    case "in_review":
+      return <ThemedGitPullRequest size={14} uniProps={attentionColorMapping} />;
+    case "in_progress":
+      return <ThemedCircleDot size={14} uniProps={runningColorMapping} />;
+    case "backlog":
+      return <ThemedCircleDashed size={14} uniProps={foregroundMutedColorMapping} />;
     case "done":
       return <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />;
   }

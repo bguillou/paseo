@@ -415,6 +415,21 @@ describe("CheckoutDiffManager", () => {
     expect(mockRequestWorkingTreeWatch).not.toHaveBeenCalled();
   });
 
+  test("base diff subscriptions mark their base advisory so a re-point is followed", async () => {
+    const { manager, workspaceGitService } = createManager({ repoRoot: "/tmp/repo" });
+
+    await manager.subscribe(
+      { cwd: "/tmp/repo", compare: { mode: "base", baseRef: "main" } },
+      vi.fn(),
+    );
+
+    expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith(
+      "/tmp/repo",
+      expect.objectContaining({ mode: "base", baseRef: "main", baseRefAdvisory: true }),
+      undefined,
+    );
+  });
+
   test("base diff subscriptions ignore worktree-only workspace snapshot updates", async () => {
     const getCheckoutDiff = vi.fn(async () => ({ diff: "", structured: [] }));
     const { manager, getOnWorkspaceSnapshot } = createManager({

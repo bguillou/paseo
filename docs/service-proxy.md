@@ -26,6 +26,24 @@ dev--feature-auth--miniweb.localhost
 
 Local and public routes use one combined leftmost label (`script--branch--project`). This keeps the hostname compatible with normal single-level wildcard DNS and TLS. If the combined label would exceed DNS's 63-character label limit, Paseo truncates it with a deterministic hash suffix to avoid collisions.
 
+### Preview URL override
+
+A service script may set `previewUrl` to override the URL the app's preview ("open service") opens. It is a full URL that replaces the generated local/public/direct routes for that script. Use `$PASEO_PORT` (case-insensitive, `${PASEO_PORT}` also works) for the assigned service port, or `$PASEO_WORKTREE_PORT` for the deterministic per-worktree base port (set via `worktree.portBase`):
+
+```json
+{
+  "scripts": {
+    "web": {
+      "type": "service",
+      "command": "npm run dev",
+      "previewUrl": "http://localhost:$PASEO_PORT/dashboard"
+    }
+  }
+}
+```
+
+Only services have a preview. The placeholders are substituted client-side: `$PASEO_PORT` from the running service's assigned port, `$PASEO_WORKTREE_PORT` from the worktree's base port. If a `previewUrl` references a port before it is known, no preview link is shown until it is. The field lives on the script entry, so it works the same in a committed `paseo.json` and in the user/global project config.
+
 ## Managing workspace scripts
 
 Configured `paseo.json` scripts can be managed without addressing their backing terminal directly:

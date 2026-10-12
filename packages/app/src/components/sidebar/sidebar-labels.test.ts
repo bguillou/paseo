@@ -34,6 +34,7 @@ function workspace(
     archiveUnpushedCommitCount: null,
     scripts: [],
     hasRunningScripts: false,
+    hasUserMessage: false,
   };
 }
 

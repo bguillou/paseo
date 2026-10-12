@@ -36,6 +36,7 @@ function thread(key: string, commentCount: number): PrInlineThreadData {
 function actions(threads: PrInlineThreadData[], openComposerKeys: string[] = []): PrInlineActions {
   return {
     threadsByTarget: new Map([["a.ts:new:1", threads]]),
+    commentCountByPath: new Map(),
     openComposerKeys: new Set(openComposerKeys),
     onToggleComposer: () => {},
     onReply: async () => ({ ok: true, error: null }),

@@ -267,6 +267,55 @@ export function updatePaseoWorktreeBaseRef(
   return next;
 }
 
+// Base-ref override for checkouts that are NOT Paseo worktrees (the main clone, or a
+// plain `git worktree`). Those have no worktree.json, so their base is otherwise derived
+// live from origin/HEAD and cannot be re-pointed. The override is a sidecar in the same
+// per-worktree git dir, so it is isolated per working tree and survives across sessions.
+const BaseRefOverrideSchema = z.object({
+  version: z.literal(1),
+  baseRefName: z.string().min(1),
+  baseRef: z.string().min(1).optional(),
+});
+export type BaseRefOverride = z.infer<typeof BaseRefOverrideSchema>;
+
+function getBaseRefOverridePath(worktreeRoot: string): string {
+  return join(getGitDirForWorktreeRoot(worktreeRoot), "paseo", "base-ref-override.json");
+}
+
+export function readBaseRefOverride(worktreeRoot: string): BaseRefOverride | null {
+  const path = getBaseRefOverridePath(worktreeRoot);
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    return BaseRefOverrideSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+export function writeBaseRefOverride(
+  worktreeRoot: string,
+  options: { baseRefName: string; baseRef: string },
+): BaseRefOverride {
+  const baseRefName = normalizeBaseRefName(options.baseRefName);
+  assertValidBaseRef(baseRefName);
+  const baseRef = options.baseRef.trim();
+  assertValidBaseRef(baseRef);
+
+  const override: BaseRefOverride = { version: 1, baseRefName, baseRef };
+  const path = getBaseRefOverridePath(worktreeRoot);
+  mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "paseo"), { recursive: true });
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(override, null, 2)}\n`, "utf8");
+  renameSync(tempPath, path);
+  return override;
+}
+
+export function storedBaseRefFromOverride(override: BaseRefOverride | null): string | null {
+  return override?.baseRef ?? override?.baseRefName ?? null;
+}
+
 export function writePaseoWorktreeRuntimeMetadata(
   worktreeRoot: string,
   options: { worktreePort: number },

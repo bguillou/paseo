@@ -14,6 +14,7 @@ function agent(input: {
   pendingPermissionCount?: number;
   archivedAt?: string | null;
   parentAgentId?: string | null;
+  lastUserMessageAt?: string | null;
 }): Agent {
   return {
     serverId: "host-a",
@@ -32,7 +33,7 @@ function agent(input: {
         : { phase: "idle", cancellationRequestId: null }),
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date(input.updatedAt),
-    lastUserMessageAt: null,
+    lastUserMessageAt: input.lastUserMessageAt ? new Date(input.lastUserMessageAt) : null,
     lastActivityAt: new Date(input.updatedAt),
     capabilities: {
       supportsStreaming: true,
@@ -144,6 +145,7 @@ describe("workspace agent activity index", () => {
             agentId: "permission",
             status: "needs_input",
             enteredAt: new Date("2026-06-01T10:01:00.000Z"),
+            hasUserMessage: false,
           },
         ],
         [
@@ -152,6 +154,7 @@ describe("workspace agent activity index", () => {
             agentId: "attention",
             status: "attention",
             enteredAt: new Date("2026-06-01T10:02:00.000Z"),
+            hasUserMessage: false,
           },
         ],
       ]),
@@ -198,6 +201,7 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "running",
       enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+      hasUserMessage: false,
     });
   });
 
@@ -233,6 +237,7 @@ describe("workspace agent activity index", () => {
             agentId: "parent",
             status: "done",
             enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+            hasUserMessage: false,
           },
         ],
         [
@@ -241,6 +246,7 @@ describe("workspace agent activity index", () => {
             agentId: "child",
             status: "running",
             enteredAt: new Date("2026-06-01T10:03:00.000Z"),
+            hasUserMessage: false,
           },
         ],
       ]),
@@ -317,6 +323,131 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "needs_input",
       enteredAt: new Date("2026-06-01T10:05:00.000Z"),
+      hasUserMessage: false,
     });
+  });
+
+  it("flags a workspace whose agent received a first message", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "root",
+          agent({
+            id: "root",
+            workspaceId: "workspace-a",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+            lastUserMessageAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+        [
+          "untouched",
+          agent({
+            id: "untouched",
+            workspaceId: "workspace-b",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    expect(index.get("workspace-a")?.hasUserMessage).toBe(true);
+    expect(index.get("workspace-b")?.hasUserMessage).toBe(false);
+  });
+
+  it("counts a message to any agent in the workspace, including a subagent", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "root",
+          agent({
+            id: "root",
+            workspaceId: "workspace-a",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+        [
+          "child",
+          agent({
+            id: "child",
+            workspaceId: "workspace-a",
+            status: "running",
+            updatedAt: "2026-06-01T10:01:00.000Z",
+            parentAgentId: "root",
+            lastUserMessageAt: "2026-06-01T10:01:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    // Status still tracks the root agent, but the subagent's message flags the workspace.
+    expect(index.get("workspace-a")?.agentId).toBe("root");
+    expect(index.get("workspace-a")?.hasUserMessage).toBe(true);
+  });
+
+  it("ignores a message to an archived agent", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "root",
+          agent({
+            id: "root",
+            workspaceId: "workspace-a",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+        [
+          "archived",
+          agent({
+            id: "archived",
+            workspaceId: "workspace-a",
+            status: "closed",
+            updatedAt: "2026-06-01T10:01:00.000Z",
+            archivedAt: "2026-06-01T10:01:00.000Z",
+            lastUserMessageAt: "2026-06-01T10:01:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    expect(index.get("workspace-a")?.hasUserMessage).toBe(false);
+  });
+
+  it("rebuilds the index when only hasUserMessage changes for the same agent and status", () => {
+    const previous = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "root",
+          agent({
+            id: "root",
+            workspaceId: "workspace-a",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    const next = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "root",
+          agent({
+            id: "root",
+            workspaceId: "workspace-a",
+            status: "idle",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+            lastUserMessageAt: "2026-06-01T10:02:00.000Z",
+          }),
+        ],
+      ]),
+      previous,
+    );
+
+    expect(next).not.toBe(previous);
+    expect(next.get("workspace-a")?.hasUserMessage).toBe(true);
   });
 });

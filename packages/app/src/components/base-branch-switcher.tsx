@@ -23,8 +23,8 @@ interface BaseBranchSwitcherProps {
   workspaceId: string;
   workspaceDirectory: string | null;
   isGitCheckout: boolean;
-  // Re-pointing the base is a worktree-only, feature-gated capability. When false the base is
-  // shown read-only so it is still visible in the header.
+  // Re-pointing the base is a feature-gated capability (any git checkout; the daemon persists it
+  // per working tree). When false — an old daemon — the base is shown read-only but still visible.
   canChangeBase: boolean;
   testID?: string;
 }
@@ -86,8 +86,8 @@ export function BaseBranchSwitcher({
     return null;
   }
 
-  // Read-only presentation when the daemon can't change the base (old daemon) or the workspace
-  // is not a worktree: keep the base visible without offering a picker.
+  // Read-only presentation when the daemon can't change the base (old daemon): keep the base
+  // visible without offering a picker.
   if (!canChangeBase) {
     return (
       <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>

@@ -106,6 +106,7 @@ import {
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
+import { useComposerPlanModeActive } from "@/composer/use-composer-plan-mode";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import { resolveActiveSendBehavior } from "./input/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
@@ -128,6 +129,8 @@ import type {
 } from "@/attachments/types";
 import type { SelectedFile } from "@/attachments/selected-file";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
+import { useChatHistoryAttachmentPicker } from "@/composer/attachments/chat-history-picker";
+import { usePlanAttachmentPicker } from "@/composer/attachments/plan-picker";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useWorkspaceAttachmentsForScopes } from "@/attachments/workspace-attachments-store";
 import { droppedItemsToSelectedFiles } from "@/composer/attachments/drop";
@@ -929,6 +932,12 @@ interface ComposerProps {
   textReplacement: TextReplacement;
   attachments: UserComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
+  /**
+   * Draft attachment scope key. Present only for new-agent (draft) composers;
+   * enables the "add conversation" affordance, which attaches another
+   * conversation's transcript to the first prompt and writes to this scope.
+   */
+  chatHistoryAttachmentScopeKey?: string;
   onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
   onChangeAttachments: (updater: AttachmentListUpdater) => void;
   onForgeChangeRequestDetected?: () => void;
@@ -1213,6 +1222,7 @@ function ComposerContentImpl({
   textReplacement,
   attachments,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
+  chatHistoryAttachmentScopeKey,
   onOpenWorkspaceAttachment,
   onChangeAttachments,
   onForgeChangeRequestDetected,
@@ -1350,6 +1360,31 @@ function ComposerContentImpl({
     attachments,
     onChangeAttachments: setSelectedAttachments,
     anchorRef: attachButtonRef,
+  });
+  const chatHistoryAttachments = useChatHistoryAttachmentPicker({
+    serverId,
+    cwd,
+    excludeAgentId: agentId,
+    scopeKey: chatHistoryAttachmentScopeKey,
+    client,
+    anchorRef: attachButtonRef,
+    enabled:
+      resolveAgentControlsMode(agentControls) === "draft" && Boolean(chatHistoryAttachmentScopeKey),
+  });
+  // Unlike chat history, plan attachments are offered for both drafts and live
+  // agents. The primary read scope (attachmentScopeKeys[0]) is the draft scope
+  // for drafts and the workspace scope for live agents, so writing there lands
+  // the attachment where the composer reads it.
+  const planAttachmentScopeKey = attachmentScopeKeys[0];
+  const planAttachments = usePlanAttachmentPicker({
+    serverId,
+    cwd,
+    workspaceId,
+    excludeAgentId: agentId,
+    scopeKey: planAttachmentScopeKey,
+    client,
+    anchorRef: attachButtonRef,
+    enabled: Boolean(planAttachmentScopeKey),
   });
   const pluginClientSlashCommands = usePluginClientSlashCommands({
     serverId,
@@ -2133,6 +2168,8 @@ function ComposerContentImpl({
         },
       },
       ...pluginAttachments.menuItems,
+      ...chatHistoryAttachments.menuItems,
+      ...planAttachments.menuItems,
       {
         id: "file",
         label: t("composer.attachments.addFile"),
@@ -2144,6 +2181,8 @@ function ComposerContentImpl({
     );
     return items;
   }, [
+    chatHistoryAttachments.menuItems,
+    planAttachments.menuItems,
     forgePresentation,
     handlePasteImage,
     handlePickFile,
@@ -2179,6 +2218,12 @@ function ComposerContentImpl({
       }),
     [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
   );
+
+  const planModeActive = useComposerPlanModeActive({
+    serverId,
+    agentId,
+    draftControls: agentControls,
+  });
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
     attachButtonRef.current = node;
@@ -2428,6 +2473,7 @@ function ComposerContentImpl({
                   attachmentSlot={attachmentTray}
                   inputMode={inputMode}
                   readOnly={readOnly}
+                  planModeActive={planModeActive}
                   textReplacement={textReplacement}
                   submitLabel={submitLabel}
                 />
@@ -2453,6 +2499,8 @@ function ComposerContentImpl({
                 renderOption={renderGithubPickerOption}
               />
               {pluginAttachments.picker}
+              {chatHistoryAttachments.picker}
+              {planAttachments.picker}
             </View>
           </View>
         </View>

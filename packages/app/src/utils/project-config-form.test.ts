@@ -197,6 +197,7 @@ describe("applyDraftToConfig", () => {
         commandOriginalKind: "missing",
         type: "long-running",
         portText: "3000",
+        previewUrlText: "",
         rawEntry: {},
       },
       {
@@ -206,6 +207,7 @@ describe("applyDraftToConfig", () => {
         commandOriginalKind: "missing",
         type: "long-running",
         portText: "auto",
+        previewUrlText: "",
         rawEntry: {},
       },
     ];
@@ -214,6 +216,46 @@ describe("applyDraftToConfig", () => {
     const tunnel = (next.scripts ?? {}).tunnel as Record<string, unknown>;
     expect(dev.port).toBe(3000);
     expect(tunnel.port).toBe("auto");
+  });
+
+  it("writes previewUrl for service scripts and drops it for non-service scripts", () => {
+    const base = PaseoConfigRawSchema.parse({});
+    const draft = configToDraft(base);
+    draft.scripts = [
+      {
+        id: "row-svc",
+        name: "web",
+        commandText: "npm run dev",
+        commandOriginalKind: "missing",
+        type: "service",
+        portText: "",
+        previewUrlText: "http://localhost:$PASEO_PORT/app",
+        rawEntry: {},
+      },
+      {
+        id: "row-plain",
+        name: "lint",
+        commandText: "npm run lint",
+        commandOriginalKind: "missing",
+        type: "",
+        portText: "",
+        previewUrlText: "http://localhost:1234",
+        rawEntry: {},
+      },
+    ];
+    const next = applyDraftToConfig({ draft, base });
+    const web = (next.scripts ?? {}).web as Record<string, unknown>;
+    const lint = (next.scripts ?? {}).lint as Record<string, unknown>;
+    expect(web.previewUrl).toBe("http://localhost:$PASEO_PORT/app");
+    expect(lint.previewUrl).toBeUndefined();
+  });
+
+  it("reads an existing previewUrl into the draft", () => {
+    const base = PaseoConfigRawSchema.parse({
+      scripts: { web: { type: "service", command: "npm run dev", previewUrl: "http://x/y" } },
+    });
+    const draft = configToDraft(base);
+    expect(draft.scripts[0]?.previewUrlText).toBe("http://x/y");
   });
 
   it("reads metadata prompt instructions for visible keys", () => {
@@ -343,6 +385,7 @@ describe("applyDraftToConfig", () => {
         commandOriginalKind: "missing",
         type: "",
         portText: "",
+        previewUrlText: "",
         rawEntry: {},
       });
     const next = applyDraftToConfig({ draft, base });

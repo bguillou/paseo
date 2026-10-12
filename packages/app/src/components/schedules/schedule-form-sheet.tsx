@@ -39,7 +39,11 @@ import {
   useFormPreferences,
   type FormPreferences,
 } from "@/hooks/use-form-preferences";
-import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
+import {
+  useScheduleMutations,
+  type CreateScheduleInput,
+  type UpdateScheduleInput,
+} from "@/hooks/use-schedule-mutations";
 import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
@@ -53,6 +57,7 @@ import type {
   ScheduleFormModel,
   ScheduleFormSnapshot,
   ScheduleFormState,
+  ScheduleIsolationMode,
 } from "@/schedules/schedule-form-model";
 import { validateCron } from "@/utils/schedule-format";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -78,6 +83,55 @@ function requireCronCadence(
     throw new Error("Choose a cron cadence before creating this schedule");
   }
   return cadence;
+}
+
+type ScheduleCreateNewAgentConfig = Extract<
+  CreateScheduleInput["target"],
+  { type: "new-agent" }
+>["config"];
+
+function buildScheduleCreateConfig(
+  state: ScheduleFormState,
+  provider: AgentProvider,
+  cwd: string,
+): ScheduleCreateNewAgentConfig {
+  return {
+    provider,
+    cwd,
+    model: state.selectedModel || undefined,
+    modeId: state.selectedMode || undefined,
+    thinkingOptionId: state.selectedThinkingOptionId || undefined,
+    ...(state.submitArchiveOnFinish !== undefined
+      ? { archiveOnFinish: state.submitArchiveOnFinish }
+      : {}),
+    ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+    ...(state.submitExistingWorkspaceId !== undefined
+      ? { existingWorkspaceId: state.submitExistingWorkspaceId }
+      : {}),
+    title: state.name.trim() || undefined,
+  };
+}
+
+function buildScheduleUpdateConfig(
+  state: ScheduleFormState,
+  provider: AgentProvider,
+  cwd: string,
+): NonNullable<UpdateScheduleInput["newAgentConfig"]> {
+  return {
+    provider,
+    model: state.selectedModel || null,
+    modeId: state.selectedMode || null,
+    thinkingOptionId: state.selectedThinkingOptionId || null,
+    cwd,
+    ...(state.submitArchiveOnFinish !== undefined
+      ? { archiveOnFinish: state.submitArchiveOnFinish }
+      : {}),
+    ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+    // Send the picked worktree, or null to clear a previous pick when switching away.
+    ...(state.submitIsolation !== undefined
+      ? { existingWorkspaceId: state.submitExistingWorkspaceId ?? null }
+      : {}),
+  };
 }
 
 function resolveCreateServerId(input: {
@@ -121,6 +175,8 @@ function selectScheduleHosts(
       label: host.label,
       supportsWorkspaceMultiplicity:
         state.sessions[host.serverId]?.serverInfo?.features?.workspaceMultiplicity === true,
+      supportsExistingWorktree:
+        state.sessions[host.serverId]?.serverInfo?.features?.scheduleExistingWorktree === true,
     }));
 }
 
@@ -340,17 +396,7 @@ function OpenScheduleFormSheet({
         name: state.name.trim() || null,
         prompt: state.prompt.trim(),
         ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
-        newAgentConfig: {
-          provider,
-          model: state.selectedModel || null,
-          modeId: state.selectedMode || null,
-          thinkingOptionId: state.selectedThinkingOptionId || null,
-          cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-        },
+        newAgentConfig: buildScheduleUpdateConfig(state, provider, cwd),
         maxRuns,
       });
       return true;
@@ -362,18 +408,7 @@ function OpenScheduleFormSheet({
       cadence: requireCronCadence(state.submitCadence),
       target: {
         type: "new-agent",
-        config: {
-          provider,
-          cwd,
-          model: state.selectedModel || undefined,
-          modeId: state.selectedMode || undefined,
-          thinkingOptionId: state.selectedThinkingOptionId || undefined,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-          title: state.name.trim() || undefined,
-        },
+        config: buildScheduleCreateConfig(state, provider, cwd),
       },
       ...(maxRuns != null ? { maxRuns } : {}),
     });
@@ -798,6 +833,10 @@ function ScheduleTargetFields({
         <ScheduleIsolationField model={model} state={state} size={controlSize} />
       ) : null}
 
+      {state.disclosure.showExistingWorktreePicker ? (
+        <ScheduleExistingWorktreeField model={model} state={state} size={controlSize} />
+      ) : null}
+
       {state.disclosure.showArchiveOnFinishField ? (
         <Field label="Archive on finish">
           <Switch
@@ -812,6 +851,12 @@ function ScheduleTargetFields({
   );
 }
 
+const ISOLATION_MODE_LABELS: Record<ScheduleIsolationMode, string> = {
+  local: "Local",
+  "new-worktree": "New worktree",
+  "existing-worktree": "Existing worktree",
+};
+
 function ScheduleIsolationField({
   model,
   state,
@@ -821,47 +866,56 @@ function ScheduleIsolationField({
   state: ScheduleFormState;
   size: FieldControlSize;
 }): ReactElement {
-  const options = useMemo<SelectFieldOption<"local" | "worktree">[]>(
-    () => [
+  const showExistingOption = state.disclosure.showExistingWorktreeOption;
+  const options = useMemo<SelectFieldOption<ScheduleIsolationMode>[]>(() => {
+    const base: SelectFieldOption<ScheduleIsolationMode>[] = [
       {
         id: "local",
         value: "local",
-        label: "Local",
+        label: ISOLATION_MODE_LABELS.local,
         testID: "schedule-isolation-local",
       },
       {
-        id: "worktree",
-        value: "worktree",
-        label: "Worktree",
+        id: "new-worktree",
+        value: "new-worktree",
+        label: ISOLATION_MODE_LABELS["new-worktree"],
         testID: "schedule-isolation-worktree",
       },
-    ],
-    [],
-  );
+    ];
+    if (showExistingOption) {
+      base.push({
+        id: "existing-worktree",
+        value: "existing-worktree",
+        label: ISOLATION_MODE_LABELS["existing-worktree"],
+        testID: "schedule-isolation-existing-worktree",
+      });
+    }
+    return base;
+  }, [showExistingOption]);
   const selectedDisplay = useMemo<SelectFieldDisplay>(
-    () => ({ label: state.effectiveIsolation === "worktree" ? "Worktree" : "Local" }),
-    [state.effectiveIsolation],
+    () => ({ label: ISOLATION_MODE_LABELS[state.isolationMode] }),
+    [state.isolationMode],
   );
   const triggerLeading = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        {state.effectiveIsolation === "worktree" ? (
-          <GitBranch size={16} color={styles.providerIcon.color} />
-        ) : (
+        {state.isolationMode === "local" ? (
           <Folder size={16} color={styles.providerIcon.color} />
+        ) : (
+          <GitBranch size={16} color={styles.providerIcon.color} />
         )}
       </View>
     ),
-    [state.effectiveIsolation],
+    [state.isolationMode],
   );
   const handleSelectIsolation = useCallback(
-    (value: "local" | "worktree") => {
-      model.setIsolation(value);
+    (value: ScheduleIsolationMode) => {
+      model.setIsolationMode(value);
     },
     [model],
   );
   const renderIsolationOption = useCallback(
-    (input: SelectFieldRenderOptionInput<"local" | "worktree">) => (
+    (input: SelectFieldRenderOptionInput<ScheduleIsolationMode>) => (
       <IsolationOptionItem {...input} />
     ),
     [],
@@ -870,7 +924,7 @@ function ScheduleIsolationField({
   return (
     <SelectField
       label="Isolation"
-      value={state.effectiveIsolation}
+      value={state.isolationMode}
       selectedDisplay={selectedDisplay}
       options={options}
       onChange={handleSelectIsolation}
@@ -883,6 +937,64 @@ function ScheduleIsolationField({
       triggerTestID="schedule-isolation-trigger"
       triggerLeading={triggerLeading}
       renderOption={renderIsolationOption}
+    />
+  );
+}
+
+function ScheduleExistingWorktreeField({
+  model,
+  state,
+  size,
+}: {
+  model: ScheduleFormModel;
+  state: ScheduleFormState;
+  size: FieldControlSize;
+}): ReactElement {
+  const options = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      state.existingWorktreeOptions.map((worktree) => ({
+        id: worktree.workspaceId,
+        value: worktree.workspaceId,
+        label: worktree.label,
+        testID: `schedule-existing-worktree-option-${worktree.workspaceId}`,
+      })),
+    [state.existingWorktreeOptions],
+  );
+  const selectedDisplay = useMemo<SelectFieldDisplay | null>(
+    () => state.existingWorktreeDisplay,
+    [state.existingWorktreeDisplay],
+  );
+  const triggerLeading = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        <GitBranch size={16} color={styles.providerIcon.color} />
+      </View>
+    ),
+    [],
+  );
+  const handleSelect = useCallback(
+    (value: string) => {
+      model.setExistingWorktree(value);
+    },
+    [model],
+  );
+
+  return (
+    <SelectField
+      label="Worktree"
+      value={state.existingWorkspaceId}
+      selectedDisplay={selectedDisplay}
+      options={options}
+      onChange={handleSelect}
+      placeholder="Select worktree"
+      emptyText="No worktrees found"
+      searchable={options.length > 6}
+      searchPlaceholder="Search worktrees..."
+      title="Select worktree"
+      size={size}
+      testID="schedule-existing-worktree"
+      triggerTestID="schedule-existing-worktree-trigger"
+      triggerLeading={triggerLeading}
     />
   );
 }
@@ -919,14 +1031,14 @@ function IsolationOptionItem({
   selected,
   active,
   onPress,
-}: SelectFieldRenderOptionInput<"local" | "worktree">): ReactElement {
+}: SelectFieldRenderOptionInput<ScheduleIsolationMode>): ReactElement {
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        {option.value === "worktree" ? (
-          <GitBranch size={16} color={styles.providerIcon.color} />
-        ) : (
+        {option.value === "local" ? (
           <Folder size={16} color={styles.providerIcon.color} />
+        ) : (
+          <GitBranch size={16} color={styles.providerIcon.color} />
         )}
       </View>
     ),

@@ -11,16 +11,20 @@ export interface InlineImageExplicitDimensions {
 const INLINE_IMAGE_MAX_WIDTH = 240;
 const INLINE_IMAGE_MAX_HEIGHT = 160;
 
-export function resolveInlineImageSize(input: {
-  explicit: InlineImageExplicitDimensions;
-  natural: InlineImageDimensions | null;
-}): InlineImageDimensions {
+/** Smaller cap for cramped surfaces (e.g. PR comment bodies), rendered as a thumbnail. */
+export const INLINE_IMAGE_PREVIEW_BOUNDS = { maxWidth: 120, maxHeight: 90 } as const;
+
+export function resolveInlineImageSize(
+  input: {
+    explicit: InlineImageExplicitDimensions;
+    natural: InlineImageDimensions | null;
+  },
+  bounds?: { maxWidth: number; maxHeight: number },
+): InlineImageDimensions {
+  const maxWidth = bounds?.maxWidth ?? INLINE_IMAGE_MAX_WIDTH;
+  const maxHeight = bounds?.maxHeight ?? INLINE_IMAGE_MAX_HEIGHT;
   const dimensions = resolveInlineImageDimensions(input);
-  const scale = Math.min(
-    1,
-    INLINE_IMAGE_MAX_WIDTH / dimensions.width,
-    INLINE_IMAGE_MAX_HEIGHT / dimensions.height,
-  );
+  const scale = Math.min(1, maxWidth / dimensions.width, maxHeight / dimensions.height);
 
   return {
     width: Math.round(dimensions.width * scale),

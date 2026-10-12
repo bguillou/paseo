@@ -62,6 +62,7 @@ import {
 import { normalizeWorkspaceTabTarget } from "@/workspace-tabs/identity";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import { panelTargetSupportsHostForWorkspaceKey } from "@/plugins/workspace-panels/locations";
+import { DEFAULT_EXPLORER_SIDEBAR_WIDTH } from "@/components/explorer-sidebar-layout";
 
 export {
   AMBIENT_PLACEMENT,
@@ -108,7 +109,8 @@ export interface OpenWorkspaceTabInput {
 interface WorkspaceLayoutStore {
   layoutByWorkspace: Record<string, WorkspaceLayout>;
   splitSizesByWorkspace: Record<string, Record<string, number[]>>;
-  explorerSidebarWidthByWorkspace: Record<string, number>;
+  /** Explorer sidebar width is shared across every workspace, like `sidebarWidth`/`treeRailWidth`. */
+  explorerSidebarWidth: number;
   pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   hiddenAgentIdsByWorkspace: Record<string, Set<string>>;
   focusRestorationByWorkspace: Record<string, WorkspaceFocusRestorationState>;
@@ -167,7 +169,7 @@ interface WorkspaceLayoutStore {
   unfocusPane: (workspaceKey: string) => string | null;
   restorePaneFocus: (workspaceKey: string, token: string) => void;
   resizeSplit: (workspaceKey: string, groupId: string, sizes: number[]) => void;
-  resizeExplorerSidebar: (workspaceKey: string, width: number) => void;
+  resizeExplorerSidebar: (width: number) => void;
   reorderTabsInPane: (workspaceKey: string, paneId: string, tabIds: string[]) => void;
   unpinAgent: (workspaceKey: string, agentId: string) => void;
   hideAgent: (workspaceKey: string, agentId: string) => void;
@@ -185,7 +187,7 @@ interface WorkspaceFocusRestorationState {
 const MAX_TREE_DEPTH = 5;
 
 const LEGACY_EXPLORER_SIDEBAR_REFERENCE_WIDTH = 1440;
-const WORKSPACE_LAYOUT_PERSIST_VERSION = 2;
+const WORKSPACE_LAYOUT_PERSIST_VERSION = 3;
 
 function convertLegacyExplorerSidebarRatios(
   ratiosByWorkspace: Record<string, number>,
@@ -196,6 +198,17 @@ function convertLegacyExplorerSidebarRatios(
       ratio * LEGACY_EXPLORER_SIDEBAR_REFERENCE_WIDTH,
     ]),
   );
+}
+
+// COMPAT(explorerSidebarGlobalWidth): the explorer width used to be stored per workspace.
+// Collapse an old map into the single shared width by taking the first usable value.
+function collapseExplorerSidebarWidth(widthsByWorkspace: Record<string, number>): number {
+  for (const width of Object.values(widthsByWorkspace)) {
+    if (Number.isFinite(width) && width > 0) {
+      return width;
+    }
+  }
+  return DEFAULT_EXPLORER_SIDEBAR_WIDTH;
 }
 
 function replacePaneInNode(node: SplitNode, paneId: string, replacement: SplitPane): SplitNode {
@@ -345,6 +358,12 @@ function migrateWorkspaceLayoutPersistedState(
   const result = WorkspaceLayoutPersistedStateSchema.safeParse(persistedState);
   if (!result.success || version >= WORKSPACE_LAYOUT_PERSIST_VERSION) {
     return result.success ? result.data : { layoutByWorkspace: {} };
+  }
+
+  // v2 → v3 only moved the explorer width from a per-workspace map to a shared scalar,
+  // which `merge` folds in. The layout tree transform below is strictly the v1 → v2 step.
+  if (version >= 2) {
+    return result.data;
   }
 
   const layoutByWorkspace: Record<string, WorkspaceLayout> = {};
@@ -678,7 +697,7 @@ export function createWorkspaceLayoutStore(
         },
         layoutByWorkspace: {},
         splitSizesByWorkspace: {},
-        explorerSidebarWidthByWorkspace: {},
+        explorerSidebarWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
         pinnedAgentIdsByWorkspace: {},
         hiddenAgentIdsByWorkspace: {},
         focusRestorationByWorkspace: {},
@@ -1527,18 +1546,11 @@ export function createWorkspaceLayoutStore(
             },
           }));
         },
-        resizeExplorerSidebar: (workspaceKey, width) => {
-          const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
-          if (!normalizedWorkspaceKey || !Number.isFinite(width) || width <= 0) {
+        resizeExplorerSidebar: (width) => {
+          if (!Number.isFinite(width) || width <= 0) {
             return;
           }
-
-          set((state) => ({
-            explorerSidebarWidthByWorkspace: {
-              ...state.explorerSidebarWidthByWorkspace,
-              [normalizedWorkspaceKey]: width,
-            },
-          }));
+          set({ explorerSidebarWidth: width });
         },
         reorderTabsInPane: (workspaceKey, paneId, tabIds) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
@@ -1655,7 +1667,6 @@ export function createWorkspaceLayoutStore(
             const hasAny =
               normalizedWorkspaceKey in state.layoutByWorkspace ||
               normalizedWorkspaceKey in state.splitSizesByWorkspace ||
-              normalizedWorkspaceKey in state.explorerSidebarWidthByWorkspace ||
               normalizedWorkspaceKey in state.pinnedAgentIdsByWorkspace ||
               normalizedWorkspaceKey in state.hiddenAgentIdsByWorkspace ||
               normalizedWorkspaceKey in state.focusRestorationByWorkspace ||
@@ -1673,10 +1684,6 @@ export function createWorkspaceLayoutStore(
               state.layoutByWorkspace;
             const { [normalizedWorkspaceKey]: _splits, ...splitSizesByWorkspace } =
               state.splitSizesByWorkspace;
-            const {
-              [normalizedWorkspaceKey]: _explorerSidebarWidth,
-              ...explorerSidebarWidthByWorkspace
-            } = state.explorerSidebarWidthByWorkspace;
             const { [normalizedWorkspaceKey]: _pinned, ...pinnedAgentIdsByWorkspace } =
               state.pinnedAgentIdsByWorkspace;
             const { [normalizedWorkspaceKey]: _hidden, ...hiddenAgentIdsByWorkspace } =
@@ -1693,7 +1700,6 @@ export function createWorkspaceLayoutStore(
               pullRequestTabAutoOpenedByWorkspace,
               layoutByWorkspace,
               splitSizesByWorkspace,
-              explorerSidebarWidthByWorkspace,
               pinnedAgentIdsByWorkspace,
               hiddenAgentIdsByWorkspace,
               focusRestorationByWorkspace,
@@ -1727,7 +1733,7 @@ export function createWorkspaceLayoutStore(
               ]),
             ),
             splitSizesByWorkspace: state.splitSizesByWorkspace,
-            explorerSidebarWidthByWorkspace: state.explorerSidebarWidthByWorkspace,
+            explorerSidebarWidth: state.explorerSidebarWidth,
             explorerPaneIdByWorkspace: state.explorerSidebarPaneIdByWorkspace,
             sidePaneIdByWorkspace: state.sidePaneIdByWorkspace,
             pullRequestTabAutoOpenedByWorkspace: state.pullRequestTabAutoOpenedByWorkspace,
@@ -1774,12 +1780,15 @@ export function createWorkspaceLayoutStore(
               ]),
             ),
             splitSizesByWorkspace: result.data.splitSizesByWorkspace ?? {},
-            explorerSidebarWidthByWorkspace:
-              result.data.explorerSidebarWidthByWorkspace ??
-              convertLegacyExplorerSidebarRatios(
-                result.data.explorerSidebarRatioByWorkspace ??
-                  result.data.sidePanelRatioByWorkspace ??
-                  {},
+            explorerSidebarWidth:
+              result.data.explorerSidebarWidth ??
+              collapseExplorerSidebarWidth(
+                result.data.explorerSidebarWidthByWorkspace ??
+                  convertLegacyExplorerSidebarRatios(
+                    result.data.explorerSidebarRatioByWorkspace ??
+                      result.data.sidePanelRatioByWorkspace ??
+                      {},
+                  ),
               ),
             explorerSidebarPaneIdByWorkspace,
             sidePaneIdByWorkspace: result.data.sidePaneIdByWorkspace ?? {},

@@ -53,10 +53,13 @@ import {
   pushCurrentBranch,
   listCheckoutCommits,
   getCommitFileDiff,
-  resolveBranchCheckout,
+  resolveBaseRefForBranchName,
 } from "../../../utils/checkout-git.js";
 import { runGitCommand } from "../../../utils/run-git-command.js";
-import { updatePaseoWorktreeBaseRef } from "../../../utils/worktree-metadata.js";
+import {
+  updatePaseoWorktreeBaseRef,
+  writeBaseRefOverride,
+} from "../../../utils/worktree-metadata.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
@@ -655,25 +658,29 @@ export class CheckoutSession {
 
     try {
       const snapshot = await this.workspaceGitService.getSnapshot(resolvedCwd);
-      // Re-pointing the base is a worktree-only concept: that is the only kind whose base is a
-      // persisted fact (worktree.json). Ordinary checkouts derive it live from origin/HEAD.
-      if (!snapshot.git.isGit || !snapshot.git.isPaseoOwnedWorktree || !snapshot.git.repoRoot) {
-        throw new Error("Changing the base branch is only supported on Paseo worktrees");
+      // Paseo worktrees persist their base in worktree.json; other checkouts (the main clone
+      // or a plain `git worktree`) persist it in the base-ref override sidecar. Both keep the
+      // base in this worktree's git dir, so re-pointing is isolated per working tree.
+      if (!snapshot.git.isGit || !snapshot.git.repoRoot) {
+        throw new Error("Changing the base branch requires a git checkout");
       }
 
-      const resolution = await resolveBranchCheckout(resolvedCwd, baseRefName);
-      if (resolution.kind === "not-found") {
+      // A comparison base prefers the origin remote-tracking ref over a local copy that may
+      // be far behind; see resolveBaseRefForBranchName.
+      const resolution = await resolveBaseRefForBranchName(resolvedCwd, baseRefName);
+      if (!resolution) {
         throw new Error(`Base branch not found: ${baseRefName}`);
       }
-      const exactRef =
-        resolution.kind === "local"
-          ? `refs/heads/${resolution.name}`
-          : `refs/remotes/${resolution.remoteRef}`;
 
-      const updated = updatePaseoWorktreeBaseRef(snapshot.git.repoRoot, {
-        baseRefName: resolution.name,
-        baseRef: exactRef,
-      });
+      const updated = snapshot.git.isPaseoOwnedWorktree
+        ? updatePaseoWorktreeBaseRef(snapshot.git.repoRoot, {
+            baseRefName: resolution.name,
+            baseRef: resolution.ref,
+          })
+        : writeBaseRefOverride(snapshot.git.repoRoot, {
+            baseRefName: resolution.name,
+            baseRef: resolution.ref,
+          });
 
       // Force a fresh snapshot so diff/ahead-behind/merge target/PR base all read the new base,
       // then push the status update (the branch observer only reacts to branch changes, not base
@@ -1219,6 +1226,91 @@ export class CheckoutSession {
           cwd,
           success: false,
           url: null,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutForgeResolveThreadRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.forge.resolve_thread.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const responseType = "checkout.forge.resolve_thread.response" as const;
+    try {
+      const { service } = await this.requireForgeService(cwd);
+      if (!service.setThreadResolved) {
+        throw new Error("This forge does not support resolving comment threads");
+      }
+      const result = await service.setThreadResolved({
+        cwd,
+        prNumber: msg.prNumber,
+        threadId: msg.threadId,
+        resolved: msg.resolved,
+        ...(msg.repoOwner ? { repoOwner: msg.repoOwner } : {}),
+        ...(msg.repoName ? { repoName: msg.repoName } : {}),
+      });
+      // Refresh the forge timeline so the resolved state updates without a manual reload.
+      await this.gitMutation.notifyGitMutation(cwd, "resolve-thread", { invalidateForge: true });
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: true,
+          resolved: result.resolved,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: false,
+          resolved: msg.resolved,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutForgeRequestReviewRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.forge.request_review.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const responseType = "checkout.forge.request_review.response" as const;
+    try {
+      const { service } = await this.requireForgeService(cwd);
+      if (!service.requestReview) {
+        throw new Error("This forge does not support requesting reviews");
+      }
+      await service.requestReview({
+        cwd,
+        prNumber: msg.prNumber,
+        reviewerLogin: msg.reviewerLogin,
+        ...(msg.repoOwner ? { repoOwner: msg.repoOwner } : {}),
+        ...(msg.repoName ? { repoName: msg.repoName } : {}),
+      });
+      // Refresh the forge status so the reviewer's new "awaiting" state appears.
+      await this.gitMutation.notifyGitMutation(cwd, "request-review", { invalidateForge: true });
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: false,
           error: toCheckoutError(error),
           requestId,
         },

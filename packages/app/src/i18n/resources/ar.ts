@@ -152,6 +152,19 @@ export const ar: TranslationResources = {
     },
     attachments: {
       addImage: "أضف صورة",
+      addConversation: "إضافة محادثة",
+      conversationPickerTitle: "إرفاق محادثة",
+      conversationSearchPlaceholder: "البحث في المحادثات…",
+      conversationEmpty: "لا توجد محادثات أخرى في هذا المشروع",
+      conversationUntitled: "محادثة بدون عنوان",
+      attachConversationFailed: "فشل إرفاق المحادثة",
+      addPlan: "إضافة خطة",
+      planTitle: "خطة",
+      planPickerTitle: "إرفاق خطة",
+      planSearchPlaceholder: "البحث في الخطط…",
+      planEmpty: "لا توجد خطط في شجرة العمل هذه",
+      planUntitled: "خطة بدون عنوان",
+      attachPlanFailed: "تعذّر إرفاق الخطة",
       pasteImage: "لصق صورة",
       addFile: "Upload file",
       addIssueOrPr: "أضف مشكلة أو PR",
@@ -559,6 +572,7 @@ export const ar: TranslationResources = {
       },
       empty: {
         noCommands: "لم يتم تشغيل أي أوامر إعداد لمساحة العمل هذه.",
+        notRun: "لم يتم تشغيل الإعداد لمساحة العمل هذه.",
       },
       accessibility: {
         noCommands: "لم يتم تشغيل أي أوامر إعداد لمساحة العمل هذه",
@@ -611,6 +625,22 @@ export const ar: TranslationResources = {
       hostDisconnected: "Host غير متصل",
       updateHost: "حدّث المضيف لاستخدام عارض الطرفية الأصلي.",
       unableToSubscribe: "غير قادر على الاشتراك في المحطة",
+      createFailed: "تعذر إنشاء المحطة",
+    },
+    bottomDock: {
+      collapse: "طيّ اللوحة",
+      expand: "توسيع اللوحة",
+      newTerminal: "محطة جديدة",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "لا توجد سكربتات مُهيّأة لمساحة العمل هذه.",
+        noOutput: "شغّل سكربتًا لعرض مخرجاته هنا.",
+      },
     },
     tabs: {
       loading: "تحميل...",
@@ -980,6 +1010,12 @@ export const ar: TranslationResources = {
           addingToChat: "جارٍ الإضافة...",
           reply: "رد",
           sendingReply: "جارٍ الإرسال…",
+          resolve: "حلّ",
+          unresolve: "إلغاء الحل",
+          resolving: "جارٍ المعالجة…",
+          openInDiff: "فتح في الفرق",
+          showResolved: "إظهار المحلولة",
+          hideResolved: "إخفاء المحلولة",
         },
         checksOverview: {
           headline: {
@@ -1030,8 +1066,12 @@ export const ar: TranslationResources = {
         sections: {
           checks: "الشيكات",
           pipeline: "خط المعالجة",
-          reviews: "التعليقات",
+          reviewers: "المراجعون",
           activity: "النشاط",
+          stack: "المكدس",
+        },
+        stack: {
+          current: "الحالي",
         },
         empty: {
           noJobs: "لا توجد مهام",
@@ -1069,6 +1109,16 @@ export const ar: TranslationResources = {
           requestedChanges: "التغييرات المطلوبة",
           reviewed: "تمت المراجعة",
         },
+        reviewers: {
+          empty: "لا يوجد مراجعون بعد",
+          requestReviewA11y: "إعادة طلب مراجعة من {{login}}",
+          status: {
+            approved: "موافَق عليه",
+            changesRequested: "التغييرات المطلوبة",
+            waiting: "في الانتظار",
+            commented: "علّق",
+          },
+        },
         time: {
           justNow: "الآن",
         },
@@ -1081,6 +1131,8 @@ export const ar: TranslationResources = {
           statusLoadFailed: "غير قادر على تحميل حالة طلب السحب",
           activityLoadFailed: "غير قادر على تحميل نشاط طلب السحب",
           replyFailed: "تعذّر نشر الرد",
+          resolveFailed: "تعذّر تحديث السلسلة",
+          requestReviewFailed: "تعذّر طلب المراجعة",
         },
       },
       forgeSetup: {
@@ -1151,6 +1203,12 @@ export const ar: TranslationResources = {
       working: "قيد العمل",
       done: "تم",
     },
+    prStatusBucket: {
+      inReview: "قيد المراجعة",
+      inProgress: "قيد التنفيذ",
+      backlog: "قائمة الانتظار",
+      done: "مكتمل",
+    },
     display: {
       trigger: "تفضيلات العرض",
       heading: "العرض",
@@ -1158,6 +1216,7 @@ export const ar: TranslationResources = {
         label: "التجميع",
         project: "المشروع",
         status: "الحالة",
+        prStatus: "حالة الطلب",
         labels: "التسميات",
       },
       titleSource: {
@@ -2791,6 +2850,9 @@ export const ar: TranslationResources = {
         editScript: "تحرير{{name}}",
         runAsService: "تشغيل كخدمة",
         serviceHint: "يشرف Paseo على العملية ويعين منفذًا عبر $PASEO_PORT",
+        previewUrl: "رابط المعاينة",
+        previewUrlHint:
+          "يتجاوز الرابط الذي تفتحه المعاينة. استخدم $PASEO_PORT للمنفذ المعيَّن، مثل http://localhost:$PASEO_PORT/app",
         actions: {
           add: "إضافة البرنامج النصي",
           edit: "يحرر",
@@ -2813,6 +2875,33 @@ export const ar: TranslationResources = {
         failedTitle: "تعذر حفظ paseo.json",
         failedDescription: "حاول مرة أخرى، أو أعد تحميل الإصدار الأحدث من القرص.",
       },
+      source: {
+        label: "موقع التكوين",
+        projectFile: "المشروع",
+        global: "هذا الحاسوب",
+      },
+      migrate: {
+        title: "تخزين التكوين على هذا الحاسوب",
+        description:
+          "ينسخ ملف paseo.json الخاص بهذا المشروع إلى إعدادات المستخدم حتى لا تحتاج إلى تثبيت أي شيء في المستودع.",
+        confirmTitle: "نقل التكوين إلى هذا الحاسوب؟",
+        confirmMessage:
+          "يُنسخ ملف paseo.json المثبَّت إلى إعدادات المستخدم. ويظل له الأولوية حتى تزيله من المستودع.",
+        confirmOverwriteMessage: "يوجد بالفعل تكوين لهذا المشروع على هذا الحاسوب وسيتم استبداله.",
+        moved: "تم نسخ التكوين إلى هذا الحاسوب",
+        failedTitle: "تعذر نقل التكوين",
+        committedStillPresentTitle: "ملف paseo.json المثبَّت لا يزال مستخدمًا",
+        committedStillPresentDescription:
+          "لملف paseo.json المثبَّت الأولوية. أزِله من المستودع (وثبِّت الحذف) لكي يُطبَّق تكوين هذا الحاسوب.",
+      },
+      delete: {
+        confirmTitle: "إزالة ملف paseo.json المثبَّت؟",
+        confirmMessage:
+          "يحذف paseo.json من شجرة العمل لكي يصبح تكوين هذا الحاسوب ساريًا. ثبِّت الحذف حتى لا تستعيده أشجار العمل الجديدة.",
+        confirm: "إزالة الملف",
+        deleted: "تمت إزالة ملف paseo.json المثبَّت",
+        failed: "تعذر إزالة paseo.json",
+      },
       actions: {
         reload: "إعادة تحميل",
         tryAgain: "حاول ثانية",
@@ -2820,6 +2909,7 @@ export const ar: TranslationResources = {
         saved: "تم حفظ المشروع",
         saving: "جارٍ الحفظ...",
         cancel: "يلغي",
+        moveToGlobal: "النقل إلى هذا الحاسوب",
       },
     },
   },

@@ -18,3 +18,16 @@ export function resolveNonPlanningModeId(
   }
   return modes.find((mode) => !isPlanningAgentMode(mode))?.id ?? null;
 }
+
+/**
+ * Whether the currently-selected mode is a planning mode. Resolves the selected mode the same
+ * way the mode control does — the chosen id, falling back to the first available mode.
+ */
+export function isPlanModeSelected(
+  modes: readonly AgentMode[],
+  selectedModeId: string | null | undefined,
+): boolean {
+  if (modes.length === 0) return false;
+  const selected = modes.find((mode) => mode.id === selectedModeId) ?? modes[0];
+  return isPlanningAgentMode(selected);
+}

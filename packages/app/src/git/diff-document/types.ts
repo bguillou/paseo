@@ -22,6 +22,8 @@ export interface WorkingDiffMode {
   prReviewActions?: PrInlineActions;
   onFilePress?: (path: string) => void;
   focusPath?: string;
+  /** New-side line to scroll to within `focusPath`. Falls back to the file top when unset. */
+  focusLine?: number;
   focusRequestId?: number;
   workspaceFileDragScope?: { serverId: string; workspaceId: string };
   onOpenFile?: (path: string) => void;

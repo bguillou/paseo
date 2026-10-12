@@ -36,6 +36,7 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("working_diff"),
     focusPath: z.string().optional(),
+    focusLine: z.number().int().positive().optional(),
     focusRequestId: z.number().optional(),
     // COMPAT(workingDiffTarget): accepted from pre-canonical tab ids; normalization removes them.
     mode: z.enum(["uncommitted", "base"]).optional(),
@@ -98,6 +99,10 @@ export const WorkspaceLayoutPersistedStateSchema = z.strictObject({
   pinnedAgentIdsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   layoutByWorkspace: z.record(z.string(), WorkspaceLayoutStorageSchema),
   splitSizesByWorkspace: z.record(z.string(), z.record(z.string(), z.array(z.number()))).optional(),
+  // The explorer sidebar width is one shared scalar across all workspaces.
+  explorerSidebarWidth: z.number().optional(),
+  // COMPAT(explorerSidebarGlobalWidth): width used to be stored per workspace; `merge` collapses
+  // this map into the shared `explorerSidebarWidth`. Remove after 2027-08-25.
   explorerSidebarWidthByWorkspace: z.record(z.string(), z.number()).optional(),
   // COMPAT(explorerSidebarWidth): added in v0.6, remove after 2027-08-25.
   explorerSidebarRatioByWorkspace: z.record(z.string(), z.number()).optional(),

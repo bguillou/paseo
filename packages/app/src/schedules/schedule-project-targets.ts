@@ -1,7 +1,13 @@
-import type { ProjectSummary } from "@/utils/projects";
+import type { ProjectSummary, WorkspaceSummary } from "@/utils/projects";
 import { shortenPath } from "@/utils/shorten-path";
 
 export const PROJECT_OPTION_PREFIX = "project:";
+
+/** An existing worktree workspace a schedule can reuse instead of creating a new one. */
+export interface ScheduleWorktreeOption {
+  workspaceId: string;
+  label: string;
+}
 
 export interface ScheduleProjectTarget {
   optionId: string;
@@ -11,6 +17,8 @@ export interface ScheduleProjectTarget {
   projectName: string;
   cwd: string;
   isGit: boolean;
+  /** Existing worktrees on this host/project, selectable for "existing worktree" isolation. */
+  worktrees: ScheduleWorktreeOption[];
 }
 
 export function buildProjectOptionId(serverId: string, projectViewKey: string): string {
@@ -40,10 +48,24 @@ export function buildScheduleProjectTargets(
         projectName: host.projectName,
         cwd,
         isGit: Boolean(host.gitRuntime),
+        worktrees: buildWorktreeOptions(host.workspaces),
       });
     }
   }
   return targets;
+}
+
+/** Active worktree workspaces on a host, as selectable schedule targets. */
+function buildWorktreeOptions(workspaces: readonly WorkspaceSummary[]): ScheduleWorktreeOption[] {
+  const options: ScheduleWorktreeOption[] = [];
+  for (const workspace of workspaces) {
+    if (workspace.workspaceKind !== "worktree" || workspace.archivingAt) {
+      continue;
+    }
+    const label = workspace.name.trim() || workspace.currentBranch?.trim() || workspace.id;
+    options.push({ workspaceId: workspace.id, label });
+  }
+  return options;
 }
 
 function projectNameKey(serverId: string, cwd: string): string {

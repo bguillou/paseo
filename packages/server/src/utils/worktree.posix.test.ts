@@ -7,9 +7,9 @@ import {
   deletePaseoWorktree,
   InvalidGitBranchNameError,
   getScriptConfigs,
-  getWorktreeSetupCommands,
-  getWorktreeTerminalSpecs,
-  getWorktreeTeardownCommands,
+  getWorktreeSetupCommandsFromRepoRoot,
+  getWorktreeTerminalSpecsFromRepoRoot,
+  getWorktreeTeardownCommandsFromRepoRoot,
   isServiceScript,
   isPaseoOwnedWorktreeCwd,
   listPaseoWorktrees,
@@ -804,7 +804,7 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
         paseoHome,
       });
 
-      expect(getWorktreeSetupCommands(result.worktreePath)).toEqual([
+      expect(getWorktreeSetupCommandsFromRepoRoot(result.worktreePath)).toEqual([
         'greeting="hello from string setup"\necho "$greeting" > setup.log',
       ]);
       expect(readFileSync(join(result.worktreePath, "setup.log"), "utf8").trim()).toBe(
@@ -885,8 +885,8 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
         }),
       );
 
-      expect(getWorktreeSetupCommands(repoDir)).toEqual([]);
-      expect(getWorktreeTeardownCommands(repoDir)).toEqual([]);
+      expect(getWorktreeSetupCommandsFromRepoRoot(repoDir)).toEqual([]);
+      expect(getWorktreeTeardownCommandsFromRepoRoot(repoDir)).toEqual([]);
     });
 
     it("filters non-string and blank entries from lifecycle arrays", () => {
@@ -910,11 +910,11 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
         }),
       );
 
-      expect(getWorktreeSetupCommands(repoDir)).toEqual([
+      expect(getWorktreeSetupCommandsFromRepoRoot(repoDir)).toEqual([
         'echo "first" > setup-array.log',
         'echo "second" >> setup-array.log',
       ]);
-      expect(getWorktreeTeardownCommands(repoDir)).toEqual([
+      expect(getWorktreeTeardownCommandsFromRepoRoot(repoDir)).toEqual([
         'echo "first" > "$PASEO_SOURCE_CHECKOUT_PATH/teardown-array.log"',
         'echo "second" >> "$PASEO_SOURCE_CHECKOUT_PATH/teardown-array.log"',
       ]);
@@ -1035,6 +1035,154 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       });
     });
 
+    describe("deterministic worktree port (worktree.portBase)", () => {
+      let previousPaseoHome: string | undefined;
+
+      beforeEach(() => {
+        // listPaseoWorktrees resolves the worktrees root from PASEO_HOME, the
+        // same way the daemon does; point it at this test's isolated home.
+        previousPaseoHome = process.env.PASEO_HOME;
+        process.env.PASEO_HOME = paseoHome;
+      });
+
+      afterEach(() => {
+        if (previousPaseoHome === undefined) {
+          delete process.env.PASEO_HOME;
+        } else {
+          process.env.PASEO_HOME = previousPaseoHome;
+        }
+      });
+
+      function configWithPortBase(portBase: number): PaseoConfig {
+        writeFileSync(join(repoDir, "paseo.json"), JSON.stringify({ worktree: { portBase } }));
+        const config = loadConfigForTest(repoDir);
+        if (!config) {
+          throw new Error("failed to load test paseo.json");
+        }
+        return config;
+      }
+
+      function createWorktreeForSlug(slug: string): Promise<WorktreeConfig> {
+        return createLegacyWorktreeForTest({
+          branchName: slug,
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: slug,
+          runSetup: false,
+          paseoHome,
+        });
+      }
+
+      it("assigns the configured base port to the first worktree", async () => {
+        const config = configWithPortBase(55000);
+        const worktree = await createWorktreeForSlug("slot-zero");
+
+        const env = await resolveWorktreeRuntimeEnv({
+          worktreePath: worktree.worktreePath,
+          branchName: worktree.branchName,
+          repoRootPath: repoDir,
+          config,
+        });
+
+        expect(env.PASEO_WORKTREE_PORT).toBe("55000");
+      });
+
+      it("gives each new worktree the next free 10-port slot", async () => {
+        const config = configWithPortBase(55000);
+        const first = await createWorktreeForSlug("first");
+        const second = await createWorktreeForSlug("second");
+
+        const firstEnv = await resolveWorktreeRuntimeEnv({
+          worktreePath: first.worktreePath,
+          branchName: first.branchName,
+          repoRootPath: repoDir,
+          config,
+        });
+        const secondEnv = await resolveWorktreeRuntimeEnv({
+          worktreePath: second.worktreePath,
+          branchName: second.branchName,
+          repoRootPath: repoDir,
+          config,
+        });
+
+        expect(firstEnv.PASEO_WORKTREE_PORT).toBe("55000");
+        expect(secondEnv.PASEO_WORKTREE_PORT).toBe("55010");
+      });
+
+      it("recycles the lowest free slot after a worktree is removed", async () => {
+        const config = configWithPortBase(55000);
+        const slots: Record<string, WorktreeConfig> = {
+          a: await createWorktreeForSlug("a"),
+          b: await createWorktreeForSlug("b"),
+          c: await createWorktreeForSlug("c"),
+        };
+
+        const ports: Record<string, string> = {};
+        for (const [name, worktree] of Object.entries(slots)) {
+          const env = await resolveWorktreeRuntimeEnv({
+            worktreePath: worktree.worktreePath,
+            branchName: worktree.branchName,
+            repoRootPath: repoDir,
+            config,
+          });
+          ports[name] = env.PASEO_WORKTREE_PORT;
+        }
+        expect([ports.a, ports.b, ports.c]).toEqual(["55000", "55010", "55020"]);
+
+        await deletePaseoWorktree({
+          cwd: repoDir,
+          worktreePath: slots.b.worktreePath,
+          paseoHome,
+        });
+
+        const replacement = await createWorktreeForSlug("replacement");
+        const replacementEnv = await resolveWorktreeRuntimeEnv({
+          worktreePath: replacement.worktreePath,
+          branchName: replacement.branchName,
+          repoRootPath: repoDir,
+          config,
+        });
+
+        expect(replacementEnv.PASEO_WORKTREE_PORT).toBe("55010");
+      });
+
+      it("keeps the persisted port even when the base later changes", async () => {
+        const worktree = await createWorktreeForSlug("sticky");
+
+        const first = await resolveWorktreeRuntimeEnv({
+          worktreePath: worktree.worktreePath,
+          branchName: worktree.branchName,
+          repoRootPath: repoDir,
+          config: configWithPortBase(55000),
+        });
+        const second = await resolveWorktreeRuntimeEnv({
+          worktreePath: worktree.worktreePath,
+          branchName: worktree.branchName,
+          repoRootPath: repoDir,
+          config: configWithPortBase(60000),
+        });
+
+        expect(first.PASEO_WORKTREE_PORT).toBe("55000");
+        expect(second.PASEO_WORKTREE_PORT).toBe("55000");
+      });
+
+      it("falls back to a free ephemeral port when no base is configured", async () => {
+        const config = loadConfigForTest(repoDir); // no paseo.json written
+        const worktree = await createWorktreeForSlug("no-base");
+
+        const env = await resolveWorktreeRuntimeEnv({
+          worktreePath: worktree.worktreePath,
+          branchName: worktree.branchName,
+          repoRootPath: repoDir,
+          config,
+        });
+
+        const port = Number(env.PASEO_WORKTREE_PORT);
+        expect(Number.isInteger(port)).toBe(true);
+        expect(port).toBeGreaterThan(0);
+      });
+    });
+
     it("cleans up worktree if setup command fails", async () => {
       // Create paseo.json with failing setup command
       const paseoConfig = {
@@ -1075,7 +1223,7 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       };
       writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
 
-      expect(getWorktreeTerminalSpecs(repoDir)).toEqual([
+      expect(getWorktreeTerminalSpecsFromRepoRoot(repoDir)).toEqual([
         { name: "Dev Server", command: "npm run dev" },
         { command: "cd packages/app && npm run dev" },
       ]);
@@ -1095,7 +1243,7 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       };
       writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
 
-      expect(getWorktreeTerminalSpecs(repoDir)).toEqual([
+      expect(getWorktreeTerminalSpecsFromRepoRoot(repoDir)).toEqual([
         { name: "Watch", command: "npm run watch" },
         { command: "npm run test" },
       ]);
@@ -1488,7 +1636,7 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
 
       await deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome });
 
-      expect(getWorktreeTeardownCommands(repoDir)).toEqual([
+      expect(getWorktreeTeardownCommandsFromRepoRoot(repoDir)).toEqual([
         'cleanup_message="teardown string"\necho "$cleanup_message" > "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
       ]);
       expect(readFileSync(join(repoDir, "teardown.log"), "utf8").trim()).toBe("teardown string");

@@ -74,6 +74,7 @@ import {
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
+import { WorkspaceBottomDock } from "@/screens/workspace/bottom-dock/workspace-bottom-dock";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -406,9 +407,7 @@ export function SplitContainer({
       }),
     [focusModeEnabled, layout.focusedPaneId, mainRoot],
   );
-  const storedExplorerSidebarWidth = useWorkspaceLayoutStore(
-    (state) => state.explorerSidebarWidthByWorkspace[workspaceKey],
-  );
+  const storedExplorerSidebarWidth = useWorkspaceLayoutStore((state) => state.explorerSidebarWidth);
   const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
   const [workspaceShellWidth, setWorkspaceShellWidth] = useState(0);
   const [previewExplorerSidebarWidth, setPreviewExplorerSidebarWidth] = useState<number | null>(
@@ -442,6 +441,11 @@ export function SplitContainer({
     const nextWidth = event.nativeEvent.layout.width;
     setWorkspaceShellWidth((current) => (current === nextWidth ? current : nextWidth));
   }, []);
+  const [mainColumnHeight, setMainColumnHeight] = useState(0);
+  const handleMainColumnLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setMainColumnHeight((current) => (current === nextHeight ? current : nextHeight));
+  }, []);
   const previewExplorerSidebarResize = useCallback(
     (_groupId: string, sizes: number[]) => {
       const nextRatio = sizes[1];
@@ -462,7 +466,6 @@ export function SplitContainer({
       const nextRatio = sizes[1];
       if (nextRatio !== undefined) {
         resizeExplorerSidebar(
-          workspaceKey,
           resolveExplorerSidebarWidth({
             requestedWidth: nextRatio * workspaceShellWidth,
             containerWidth: workspaceShellWidth,
@@ -470,7 +473,7 @@ export function SplitContainer({
         );
       }
     },
-    [resizeExplorerSidebar, workspaceKey, workspaceShellWidth],
+    [resizeExplorerSidebar, workspaceShellWidth],
   );
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -643,7 +646,7 @@ export function SplitContainer({
       >
         <View style={styles.workspaceShell} onLayout={handleWorkspaceShellLayout}>
           <WindowChromeRegion corners={mainColumnWindowChromeCorners}>
-            <View style={mainColumnStyle}>
+            <View style={mainColumnStyle} onLayout={handleMainColumnLayout}>
               {renderMainHeader?.()}
               {splitRoot.usesFallbackStrip && <WindowChromeSafeArea placement="below" />}
               {renderRoot ? (
@@ -704,33 +707,42 @@ export function SplitContainer({
                 onResizeSplit={commitExplorerSidebarResize}
               />
               <View style={explorerSidebarDockStyle}>
-                <ExplorerSidebarDock
-                  pane={explorerSidebarPane}
-                  uiTabs={uiTabs}
-                  normalizedServerId={normalizedServerId}
-                  normalizedWorkspaceId={normalizedWorkspaceId}
+                <View style={styles.explorerSidebarDockTop}>
+                  <ExplorerSidebarDock
+                    pane={explorerSidebarPane}
+                    uiTabs={uiTabs}
+                    normalizedServerId={normalizedServerId}
+                    normalizedWorkspaceId={normalizedWorkspaceId}
+                    isWorkspaceFocused={isWorkspaceFocused}
+                    closingTabIds={closingTabIds}
+                    onSelectTab={onSelectTabInPane}
+                    onCloseTab={onCloseTab}
+                    onCreateNewTab={onCreateNewTab}
+                    hoveredCloseTabKey={hoveredCloseTabKey}
+                    setHoveredCloseTabKey={setHoveredCloseTabKey}
+                    onCopyResumeCommand={onCopyResumeCommand}
+                    onCopyAgentId={onCopyAgentId}
+                    onCopyTerminalId={onCopyTerminalId}
+                    onCopyFilePath={onCopyFilePath}
+                    onReloadAgent={onReloadAgent}
+                    onRenameTab={onRenameTab}
+                    onCloseTabsToLeft={onCloseTabsToLeft}
+                    onCloseTabsToRight={onCloseTabsToRight}
+                    onCloseOtherTabs={onCloseOtherTabs}
+                    onExitFocusMode={onExitFocusMode}
+                    buildPaneContentModel={buildPaneContentModel}
+                    onReorderTabsInPane={onReorderTabsInPane}
+                    activeDragTabId={activeDragTabId}
+                    tabDropPreview={tabDropPreview}
+                    headerAction={renderExplorerSidebarHeaderAction?.()}
+                  />
+                </View>
+                <WorkspaceBottomDock
+                  serverId={normalizedServerId}
+                  workspaceId={normalizedWorkspaceId}
+                  workspaceKey={workspaceKey}
                   isWorkspaceFocused={isWorkspaceFocused}
-                  closingTabIds={closingTabIds}
-                  onSelectTab={onSelectTabInPane}
-                  onCloseTab={onCloseTab}
-                  onCreateNewTab={onCreateNewTab}
-                  hoveredCloseTabKey={hoveredCloseTabKey}
-                  setHoveredCloseTabKey={setHoveredCloseTabKey}
-                  onCopyResumeCommand={onCopyResumeCommand}
-                  onCopyAgentId={onCopyAgentId}
-                  onCopyTerminalId={onCopyTerminalId}
-                  onCopyFilePath={onCopyFilePath}
-                  onReloadAgent={onReloadAgent}
-                  onRenameTab={onRenameTab}
-                  onCloseTabsToLeft={onCloseTabsToLeft}
-                  onCloseTabsToRight={onCloseTabsToRight}
-                  onCloseOtherTabs={onCloseOtherTabs}
-                  onExitFocusMode={onExitFocusMode}
-                  buildPaneContentModel={buildPaneContentModel}
-                  onReorderTabsInPane={onReorderTabsInPane}
-                  activeDragTabId={activeDragTabId}
-                  tabDropPreview={tabDropPreview}
-                  headerAction={renderExplorerSidebarHeaderAction?.()}
+                  containerHeight={mainColumnHeight}
                 />
               </View>
             </>
@@ -1398,6 +1410,10 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 240,
     minHeight: 0,
     backgroundColor: theme.colors.surfaceSidebar,
+  },
+  explorerSidebarDockTop: {
+    flex: 1,
+    minHeight: 0,
   },
   group: {
     flex: 1,

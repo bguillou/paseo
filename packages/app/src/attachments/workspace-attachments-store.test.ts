@@ -77,6 +77,27 @@ function chatHistoryAttachment(id: string, text = "Previous chat."): WorkspaceCo
   };
 }
 
+function planContextAttachment(id: string, text = "Plan body."): WorkspaceComposerAttachment {
+  return {
+    kind: "plan_context",
+    id,
+    attachment: {
+      type: "text",
+      mimeType: "text/plain",
+      contextKind: "plan",
+      title: "Plan",
+      text,
+    },
+    source: {
+      serverId: "local",
+      agentId: "agent-1",
+      planKey: "call-1",
+      createdAt: 1700000000000,
+      outcome: "approved",
+    },
+  };
+}
+
 describe("workspace attachments store", () => {
   it("scopes workspace attachments by server and workspace before cwd fallback", () => {
     expect(
@@ -147,6 +168,17 @@ describe("workspace attachments store", () => {
     const replacement = chatHistoryAttachment("chat_history:draft-1", "Updated chat.");
 
     expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
+  });
+
+  it("keeps distinct plans and replaces a re-picked plan by id", () => {
+    const planA = planContextAttachment("plan_context:agent-1:call-1", "Plan A.");
+    const planB = planContextAttachment("plan_context:agent-1:call-2", "Plan B.");
+
+    const withBoth = appendWorkspaceAttachment([planA], planB);
+    expect(withBoth).toEqual([planA, planB]);
+
+    const replacement = planContextAttachment("plan_context:agent-1:call-1", "Plan A updated.");
+    expect(appendWorkspaceAttachment(withBoth, replacement)).toEqual([planB, replacement]);
   });
 
   it("adds a workspace attachment against the current scope state", () => {

@@ -28,6 +28,7 @@ import type { CheckoutExistingBranchResult } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
   getWorktreeSetupCommands,
+  getWorktreeSetupCommandsFromRepoRoot,
   resolveWorktreeRuntimeEnv,
   runWorktreeSetupCommands,
   slugify,
@@ -36,6 +37,7 @@ import {
   type WorktreeSetupCommandResult,
   WorktreeSetupError,
 } from "../utils/worktree.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 import { toCheckoutError } from "./checkout-git-utils.js";
 import type {
   CreatePaseoWorktreeInput,
@@ -114,6 +116,9 @@ interface CreatePaseoWorktreeInBackgroundDependencies {
   getDaemonTcpHost: (() => string | null) | null;
   serviceProxyPublicBaseUrl?: string | null;
   onScriptsChanged: ((workspaceId: string, workspaceDirectory: string) => void) | null;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for a workspace cwd. When absent, reads the committed paseo.json.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
 }
 
 interface CreatePaseoWorktreeWorkflowDependencies extends CreatePaseoWorktreeInBackgroundDependencies {
@@ -707,6 +712,9 @@ export async function createPaseoWorktreeWorkflow(
             appendTimelineItem: (item) => setupContinuation.appendTimelineItem({ agentId, item }),
             emitLiveTimelineItem: (item) =>
               setupContinuation.emitLiveTimelineItem({ agentId, item }),
+            ...(dependencies.resolveEffectiveConfig
+              ? { resolveEffectiveConfig: dependencies.resolveEffectiveConfig }
+              : {}),
             logger: setupContinuation.logger,
           });
         },
@@ -858,7 +866,13 @@ export async function runWorktreeSetupInBackground(
         emitSetupProgress("completed", null);
       } else {
         const workspaceCwd = options.workspaceCwd ?? worktree.worktreePath;
-        const setupCommands = getWorktreeSetupCommands(workspaceCwd);
+        const effectiveConfig = dependencies.resolveEffectiveConfig
+          ? await dependencies.resolveEffectiveConfig(workspaceCwd)
+          : undefined;
+        const setupCommands =
+          effectiveConfig !== undefined
+            ? getWorktreeSetupCommands(effectiveConfig)
+            : getWorktreeSetupCommandsFromRepoRoot(workspaceCwd);
         if (setupCommands.length === 0) {
           emitSetupProgress("completed", null);
         } else {
@@ -866,6 +880,7 @@ export async function runWorktreeSetupInBackground(
             worktreePath: worktree.worktreePath,
             branchName: worktree.branchName,
             repoRootPath: options.repoRoot,
+            ...(effectiveConfig !== undefined ? { config: effectiveConfig } : {}),
           });
           dependencies.terminalManager?.registerCwdEnv({
             cwd: workspaceCwd,
@@ -877,6 +892,7 @@ export async function runWorktreeSetupInBackground(
             cleanupOnFailure: false,
             repoRootPath: options.repoRoot,
             runtimeEnv,
+            ...(effectiveConfig !== undefined ? { config: effectiveConfig } : {}),
             signal,
             onEvent: (event) => {
               applyWorktreeSetupProgressEvent(progressAccumulator, event);

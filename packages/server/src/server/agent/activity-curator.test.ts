@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentForkContextAttachment, curateAgentActivity } from "./activity-curator.js";
+import {
+  buildAgentForkContextAttachment,
+  buildAgentPlanContextAttachment,
+  curateAgentActivity,
+  extractAgentPlans,
+} from "./activity-curator.js";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 
@@ -436,5 +441,107 @@ second line'`,
         rows: [row(1, { type: "assistant_message", text: "Done.", messageId: "assistant-1" })],
       }),
     ).toThrow("Selected assistant message is no longer available.");
+  });
+});
+
+describe("extractAgentPlans", () => {
+  it("returns one entry per plan tool call, newest fields intact", () => {
+    const rows: AgentTimelineRow[] = [
+      row(1, { type: "user_message", text: "Plan it" }),
+      row(
+        2,
+        toolCallItem({
+          callId: "plan-1",
+          name: "ExitPlanMode",
+          detail: { type: "plan", text: "# First plan\nStep one" },
+          metadata: { approved: true },
+        }),
+      ),
+      row(3, { type: "assistant_message", text: "Working" }),
+      row(
+        4,
+        toolCallItem({
+          callId: "plan-2",
+          name: "plan_approval",
+          detail: { type: "plan", text: "Second plan body" },
+        }),
+      ),
+    ];
+
+    const plans = extractAgentPlans(rows);
+
+    expect(plans).toHaveLength(2);
+    expect(plans[0]).toMatchObject({
+      planKey: "plan-1",
+      outcome: "approved",
+      summary: "First plan",
+      text: "# First plan\nStep one",
+    });
+    expect(plans[0]?.createdAt).toBe(Date.parse("2026-06-28T00:00:02.000Z"));
+    expect(plans[1]).toMatchObject({
+      planKey: "plan-2",
+      outcome: "pending",
+      summary: "Second plan body",
+    });
+  });
+
+  it("derives outcomes from status and approval metadata", () => {
+    const rows: AgentTimelineRow[] = [
+      row(
+        1,
+        toolCallItem({
+          callId: "rejected",
+          name: "ExitPlanMode",
+          detail: { type: "plan", text: "Rejected plan" },
+          metadata: { approved: false },
+        }),
+      ),
+      row(
+        2,
+        toolCallItem({
+          callId: "canceled",
+          name: "ExitPlanMode",
+          status: "canceled",
+          detail: { type: "plan", text: "Canceled plan" },
+        }),
+      ),
+    ];
+
+    const [rejected, canceled] = extractAgentPlans(rows);
+
+    expect(rejected?.outcome).toBe("rejected");
+    expect(canceled?.outcome).toBe("canceled");
+  });
+
+  it("ignores non-plan tool calls", () => {
+    const rows: AgentTimelineRow[] = [
+      row(1, toolCallItem({ callId: "read-1", name: "read_file" })),
+    ];
+
+    expect(extractAgentPlans(rows)).toEqual([]);
+  });
+});
+
+describe("buildAgentPlanContextAttachment", () => {
+  it("wraps the plan in a labeled context block", () => {
+    const attachment = buildAgentPlanContextAttachment({
+      text: "# Do it\nfirst step",
+      agentTitle: "Fix parser",
+      cwd: "/tmp/repo",
+    });
+
+    expect(attachment.type).toBe("text");
+    expect(attachment.contextKind).toBe("plan");
+    expect(attachment.title).toBe("Plan");
+    expect(attachment.text).toContain("<plan>");
+    expect(attachment.text).toContain("</plan>");
+    expect(attachment.text).toContain("Source agent: Fix parser");
+    expect(attachment.text).toContain("Source directory: /tmp/repo");
+    expect(attachment.text).toContain("# Do it");
+  });
+
+  it("falls back to a placeholder body for an empty plan", () => {
+    const attachment = buildAgentPlanContextAttachment({ text: "   " });
+    expect(attachment.text).toContain("No plan content.");
   });
 });

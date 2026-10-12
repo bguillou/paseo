@@ -16,6 +16,7 @@ import {
   useWorkspaceSetupStore,
   type WorkspaceSetupSnapshot,
 } from "@/stores/workspace-setup-store";
+import { resolveSetupViewState, type SetupViewState } from "@/panels/setup-panel-state";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 
@@ -114,15 +115,7 @@ type SetupCommand = WorkspaceSetupSnapshot["detail"]["commands"][number];
 
 const EMPTY_COMMANDS: SetupCommand[] = [];
 
-function BlockedSetupNotice({
-  serverId,
-  workspaceId,
-  source,
-}: {
-  serverId: string;
-  workspaceId: string;
-  source: NonNullable<WorkspaceSetupSnapshot["blockedSource"]>;
-}) {
+function useRunWorkspaceSetup(serverId: string, workspaceId: string) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const supportsSetupRun = useHostFeature(serverId, "workspaceSetupRun");
@@ -141,6 +134,23 @@ function BlockedSetupNotice({
       setIsRunningSetup(false);
     }
   }, [client, t, workspaceId]);
+  return { supportsSetupRun, runSetup, runError, isRunningSetup };
+}
+
+function BlockedSetupNotice({
+  serverId,
+  workspaceId,
+  source,
+}: {
+  serverId: string;
+  workspaceId: string;
+  source: NonNullable<WorkspaceSetupSnapshot["blockedSource"]>;
+}) {
+  const { t } = useTranslation();
+  const { supportsSetupRun, runSetup, runError, isRunningSetup } = useRunWorkspaceSetup(
+    serverId,
+    workspaceId,
+  );
 
   return (
     <>
@@ -161,6 +171,26 @@ function BlockedSetupNotice({
       </Alert>
       {runError ? <Alert size="sm" variant="error" description={runError} /> : null}
     </>
+  );
+}
+
+function NotRunSetupNotice({ serverId, workspaceId }: { serverId: string; workspaceId: string }) {
+  const { t } = useTranslation();
+  const { supportsSetupRun, runSetup, runError, isRunningSetup } = useRunWorkspaceSetup(
+    serverId,
+    workspaceId,
+  );
+
+  return (
+    <View style={styles.emptyContainer} testID="workspace-setup-not-run">
+      <Text style={styles.emptyText}>{t("workspace.setup.empty.notRun")}</Text>
+      {supportsSetupRun ? (
+        <Button accessibilityRole="button" onPress={runSetup} loading={isRunningSetup} size="sm">
+          {t("workspace.setup.blocked.run")}
+        </Button>
+      ) : null}
+      {runError ? <Alert size="sm" variant="error" description={runError} /> : null}
+    </View>
   );
 }
 
@@ -222,6 +252,13 @@ function useWorkspaceSetupSnapshot(serverId: string, workspaceId: string) {
   const snapshot = useWorkspaceSetupStore((state) => (key ? (state.snapshots[key] ?? null) : null));
   const upsertProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
   const requestedRef = useRef(false);
+  const [fetchSettled, setFetchSettled] = useState(false);
+
+  useEffect(() => {
+    // A new client means a reconnect; the daemon may have restarted, so ask again.
+    requestedRef.current = false;
+    setFetchSettled(false);
+  }, [client]);
 
   useEffect(() => {
     if (snapshot || requestedRef.current || !client) return;
@@ -238,11 +275,12 @@ function useWorkspaceSetupSnapshot(serverId: string, workspaceId: string) {
         return;
       })
       .catch(() => {
-        // Server may not support this yet — ignore.
-      });
+        // Server may not support this yet — settle with nothing rather than spin.
+      })
+      .finally(() => setFetchSettled(true));
   }, [client, snapshot, serverId, upsertProgress, workspaceId]);
 
-  return snapshot;
+  return { snapshot, fetchSettled };
 }
 
 function useExpandedSetupCommands() {
@@ -269,17 +307,22 @@ function useExpandedSetupCommands() {
 }
 
 function SetupPanel() {
-  const { t } = useTranslation();
   const { serverId, target } = usePaneContext();
   invariant(target.kind === "setup", "SetupPanel requires setup target");
+  return <SetupView serverId={serverId} workspaceId={target.workspaceId} />;
+}
 
-  const snapshot = useWorkspaceSetupSnapshot(serverId, target.workspaceId);
+/**
+ * The setup script output + status, renderable outside the pane/tab system (e.g.
+ * the workspace bottom dock) given a serverId + workspaceId.
+ */
+export function SetupView({ serverId, workspaceId }: { serverId: string; workspaceId: string }) {
+  const { t } = useTranslation();
+  const { snapshot, fetchSettled } = useWorkspaceSetupSnapshot(serverId, workspaceId);
+  const viewState = resolveSetupViewState({ snapshot, fetchSettled });
 
   const commands = snapshot?.detail.commands ?? EMPTY_COMMANDS;
   const log = snapshot?.detail.log ?? "";
-  const hasNoSetupCommands =
-    snapshot?.status === "completed" && commands.length === 0 && log.trim().length === 0;
-  const isWaiting = !snapshot || (snapshot.status === "running" && commands.length === 0);
 
   const { expandedIndices, manuallyCollapsed, toggleExpanded } = useExpandedSetupCommands();
 
@@ -308,12 +351,11 @@ function SetupPanel() {
       </Text>
       <SetupPanelBody
         serverId={serverId}
-        workspaceId={target.workspaceId}
+        workspaceId={workspaceId}
         snapshot={snapshot}
         commands={commands}
         log={log}
-        isWaiting={isWaiting}
-        hasNoSetupCommands={hasNoSetupCommands}
+        viewState={viewState}
         autoExpandIndex={autoExpandIndex}
         expandedIndices={expandedIndices}
         manuallyCollapsed={manuallyCollapsed}
@@ -329,8 +371,7 @@ interface SetupPanelBodyProps {
   snapshot: WorkspaceSetupSnapshot | null;
   commands: SetupCommand[];
   log: string;
-  isWaiting: boolean;
-  hasNoSetupCommands: boolean;
+  viewState: SetupViewState;
   autoExpandIndex: number | null;
   expandedIndices: Set<number>;
   manuallyCollapsed: Set<number>;
@@ -339,17 +380,17 @@ interface SetupPanelBodyProps {
 
 function SetupPanelBody(props: SetupPanelBodyProps) {
   const { t } = useTranslation();
-  const { snapshot, commands, log } = props;
-  if (snapshot?.status === "blocked" && snapshot.blockedSource) {
+  const { snapshot, commands, log, viewState } = props;
+  if (viewState.kind === "blocked") {
     return (
       <BlockedSetupNotice
         serverId={props.serverId}
         workspaceId={props.workspaceId}
-        source={snapshot.blockedSource}
+        source={viewState.source}
       />
     );
   }
-  if (props.isWaiting) {
+  if (viewState.kind === "waiting") {
     return (
       <View style={styles.waitingContainer}>
         <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
@@ -357,7 +398,10 @@ function SetupPanelBody(props: SetupPanelBodyProps) {
       </View>
     );
   }
-  if (props.hasNoSetupCommands) {
+  if (viewState.kind === "notRun") {
+    return <NotRunSetupNotice serverId={props.serverId} workspaceId={props.workspaceId} />;
+  }
+  if (viewState.kind === "noCommands") {
     return (
       <View style={styles.emptyContainer}>
         <Text
@@ -596,6 +640,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: theme.spacing[3],
   },
   emptyText: {
     fontSize: theme.fontSize.base,

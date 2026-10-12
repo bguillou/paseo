@@ -30,7 +30,10 @@ import {
   requirePlannedWorkspaceServicePort,
   refreshWorkspaceServicePort,
 } from "./workspace-service-port-registry.js";
-import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
+import type {
+  PaseoConfig,
+  PaseoServicePortAllocation,
+} from "@getpaseo/protocol/paseo-config-schema";
 
 export interface WorktreeBootstrapTerminalResult {
   name: string | null;
@@ -51,7 +54,28 @@ export interface RunAsyncWorktreeBootstrapOptions {
   terminalManager: TerminalManager | null;
   appendTimelineItem: (item: AgentTimelineItem) => Promise<boolean>;
   emitLiveTimelineItem?: (item: AgentTimelineItem) => Promise<boolean>;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for the workspace cwd. When absent, reads the committed paseo.json.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   logger?: Logger;
+}
+
+async function resolveBootstrapConfig(
+  options: Pick<RunAsyncWorktreeBootstrapOptions, "resolveEffectiveConfig">,
+  cwd: string,
+): Promise<PaseoConfig | null> {
+  if (options.resolveEffectiveConfig) {
+    return options.resolveEffectiveConfig(cwd);
+  }
+  return resolveWorkspaceScriptConfigFromDisk(cwd);
+}
+
+function resolveWorkspaceScriptConfigFromDisk(repoRoot: string): PaseoConfig | null {
+  const result = readPaseoConfig(repoRoot);
+  if (!result.ok) {
+    throw paseoConfigParseError(result);
+  }
+  return result.config;
 }
 
 const MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -507,7 +531,8 @@ async function runWorktreeTerminalBootstrap(
   runtimeEnv: WorktreeRuntimeEnv,
 ): Promise<void> {
   const workspaceCwd = options.workspaceCwd ?? options.worktree.worktreePath;
-  const terminalSpecs = getWorktreeTerminalSpecs(workspaceCwd);
+  const effectiveConfig = await resolveBootstrapConfig(options, workspaceCwd);
+  const terminalSpecs = getWorktreeTerminalSpecs(effectiveConfig);
   if (terminalSpecs.length === 0) {
     return;
   }
@@ -657,9 +682,11 @@ export async function runAsyncWorktreeBootstrap(
   };
 
   try {
+    const effectiveConfig = await resolveBootstrapConfig(options, workspaceCwd);
     runtimeEnv = await resolveWorktreeRuntimeEnv({
       worktreePath: options.worktree.worktreePath,
       branchName: options.worktree.branchName,
+      config: effectiveConfig,
     });
     options.terminalManager?.registerCwdEnv({
       cwd: workspaceCwd,
@@ -671,6 +698,7 @@ export async function runAsyncWorktreeBootstrap(
       branchName: options.worktree.branchName,
       cleanupOnFailure: false,
       runtimeEnv,
+      config: effectiveConfig,
       onEvent: (event) => {
         applyWorktreeSetupProgressEvent(progressAccumulator, event);
         queueLiveRunningEmit();
@@ -737,6 +765,9 @@ export interface SpawnWorkspaceScriptOptions {
   runtimeStore: WorkspaceScriptRuntimeStore;
   terminalManager: TerminalManager;
   globalServicePorts?: PaseoServicePortAllocation;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for the repo root. When absent, reads the committed paseo.json.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   logger?: Logger;
   onLifecycleChanged?: () => void;
 }
@@ -900,14 +931,14 @@ export async function spawnWorkspaceScript(
     runtimeStore,
     terminalManager,
     globalServicePorts,
+    resolveEffectiveConfig,
     logger,
     onLifecycleChanged,
   } = options;
-  const configResult = readPaseoConfig(repoRoot);
-  if (!configResult.ok) {
-    throw paseoConfigParseError(configResult);
-  }
-  const scriptConfigs = getScriptConfigs(configResult.config);
+  const effectiveConfig = resolveEffectiveConfig
+    ? await resolveEffectiveConfig(repoRoot)
+    : resolveWorkspaceScriptConfigFromDisk(repoRoot);
+  const scriptConfigs = getScriptConfigs(effectiveConfig);
   const config = scriptConfigs.get(scriptName);
   if (!config) {
     throw new Error(`Script '${scriptName}' is not configured in paseo.json`);
@@ -942,7 +973,7 @@ export async function spawnWorkspaceScript(
         serviceProxyPublicBaseUrl,
         existingRuntimeEntry,
         serviceProxy,
-        servicePortAllocation: configResult.config?.worktree?.servicePorts ?? globalServicePorts,
+        servicePortAllocation: effectiveConfig?.worktree?.servicePorts ?? globalServicePorts,
       });
       hostname = serviceSetup.hostname;
       port = serviceSetup.port;

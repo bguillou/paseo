@@ -182,6 +182,7 @@ interface ChangesSurfaceProps {
   enabled?: boolean;
   presentation?: ChangesPresentation;
   focusPath?: string;
+  focusLine?: number;
   focusRequestId?: number;
   onOpenFile?: (path: string) => void;
   onOpenToSide?: (path: string) => void;
@@ -1451,6 +1452,7 @@ export function ChangesSurface({
   enabled,
   presentation = "combined",
   focusPath,
+  focusLine,
   focusRequestId,
   onOpenFile,
   onOpenToSide,
@@ -1575,6 +1577,7 @@ export function ChangesSurface({
   // the PR's cumulative changes); the uncommitted diff is local work the PR hasn't seen.
   const prReviewActions = usePrInlineReview({
     serverId,
+    workspaceId,
     cwd,
     enabled: prInlineReviewEnabled({ enabled, isGit, diffMode }),
   });
@@ -1684,16 +1687,25 @@ export function ChangesSurface({
   const [localFocusRequest, setLocalFocusRequest] = useState<{
     path: string;
     revision: number;
+    line?: number;
   } | null>(null);
   const externalFocusRequest = useMemo(
-    () => (focusPath ? { path: focusPath, revision: focusRequestId ?? 0 } : null),
-    [focusPath, focusRequestId],
+    () => (focusPath ? { path: focusPath, revision: focusRequestId ?? 0, line: focusLine } : null),
+    [focusPath, focusLine, focusRequestId],
   );
   const documentFocusRequest =
     localFocusRequest &&
     (!externalFocusRequest || localFocusRequest.revision >= externalFocusRequest.revision)
       ? localFocusRequest
       : externalFocusRequest;
+  const focusModeProps = useMemo(
+    () => ({
+      focusPath: documentFocusRequest?.path,
+      focusLine: documentFocusRequest?.line,
+      focusRequestId: documentFocusRequest?.revision,
+    }),
+    [documentFocusRequest],
+  );
   const handleSelectTreeFile = useCallback(
     (path: string) => {
       if (presentation === "tree" && onSelectDiffFile) {
@@ -1712,8 +1724,7 @@ export function ChangesSurface({
       kind: "working" as const,
       reviewActions,
       prReviewActions,
-      focusPath: documentFocusRequest?.path,
-      focusRequestId: documentFocusRequest?.revision,
+      ...focusModeProps,
       workspaceFileDragScope: workspaceId ? { serverId, workspaceId } : undefined,
       onOpenFile,
       onOpenToSide,
@@ -1729,8 +1740,7 @@ export function ChangesSurface({
     [
       reviewActions,
       prReviewActions,
-      documentFocusRequest?.path,
-      documentFocusRequest?.revision,
+      focusModeProps,
       serverId,
       workspaceId,
       onOpenFile,

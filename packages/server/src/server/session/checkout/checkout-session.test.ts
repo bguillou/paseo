@@ -28,6 +28,7 @@ import {
   createNoopWorkspaceGitService,
 } from "../../test-utils/workspace-git-service-stub.js";
 import { createWorktree, deletePaseoWorktree } from "../../../utils/worktree.js";
+import { readBaseRefOverride } from "../../../utils/worktree-metadata.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
@@ -807,9 +808,9 @@ describe("CheckoutSession", () => {
   });
 
   describe("set base ref", () => {
-    it("rejects changing the base on a non-worktree checkout", async () => {
+    it("rejects changing the base on a non-git checkout", async () => {
       const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
-        git: { getSnapshot: async () => createGitSnapshot("/repo", "feature") },
+        git: { getSnapshot: async (cwd) => createNoGitWorkspaceRuntimeSnapshot(cwd) },
       });
 
       await checkout.handleCheckoutSetBaseRefRequest({
@@ -830,6 +831,50 @@ describe("CheckoutSession", () => {
         throw new Error("unexpected message type");
       }
       expect(message.payload.error).not.toBeNull();
+    });
+
+    it("stores the origin ref when the picked base also exists as a stale local branch", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "checkout-session-set-base-"));
+      const cwd = realpathSync(tempDir);
+      try {
+        const remoteDir = join(cwd, "remote.git");
+        const repoDir = join(cwd, "repo");
+        execFileSync("git", ["init", "-q", "--bare", "-b", "main", remoteDir]);
+        execFileSync("git", ["init", "-q", "-b", "main", repoDir]);
+        execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir });
+        execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir });
+        writeFileSync(join(repoDir, "file.txt"), "original\n");
+        execFileSync("git", ["add", "file.txt"], { cwd: repoDir });
+        execFileSync("git", ["commit", "-qm", "initial"], { cwd: repoDir });
+        execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
+        execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: repoDir });
+        execFileSync("git", ["checkout", "-q", "-b", "feature"], { cwd: repoDir });
+
+        const { subscriber } = createFakeDiffSubscriber({ cwd: "", files: [], error: null });
+        const { checkout, emitted } = makeCheckoutSession({
+          diff: subscriber,
+          git: { getSnapshot: async () => createGitSnapshot(repoDir, "feature") },
+        });
+
+        await checkout.handleCheckoutSetBaseRefRequest({
+          type: "checkout.set_base_ref.request",
+          cwd: repoDir,
+          baseRefName: "main",
+          requestId: "sb2",
+        });
+
+        expect(emitted.at(-1)).toMatchObject({
+          type: "checkout.set_base_ref.response",
+          payload: { cwd: repoDir, success: true, baseRefName: "main", error: null },
+        });
+        expect(readBaseRefOverride(repoDir)).toEqual({
+          version: 1,
+          baseRefName: "main",
+          baseRef: "refs/remotes/origin/main",
+        });
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

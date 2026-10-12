@@ -23,7 +23,7 @@ export function explorerSidebarCloseButtonLayout(compact: boolean) {
  */
 export const EXPLORER_TAB_RAIL_INSET = 4;
 
-const DEFAULT_EXPLORER_SIDEBAR_WIDTH = 320;
+export const DEFAULT_EXPLORER_SIDEBAR_WIDTH = 320;
 const MIN_EXPLORER_SIDEBAR_WIDTH = 240;
 const MIN_WORKSPACE_BODY_WIDTH = 400;
 

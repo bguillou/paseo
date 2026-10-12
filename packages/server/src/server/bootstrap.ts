@@ -191,6 +191,10 @@ import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./servi
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
+import { GlobalProjectConfigStore } from "./project-config/global-project-config-store.js";
+import { EffectiveProjectConfigResolver } from "./project-config/effective-project-config-resolver.js";
+import { paseoConfigParseError, readPaseoConfig } from "../utils/worktree.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import { createWorkspaceScriptsService } from "./session/workspace-scripts/workspace-scripts-service.js";
 import { assertWorkspaceAutomationAllowedForWorkspace } from "./workspace-automation-gate.js";
@@ -692,6 +696,27 @@ export async function createPaseoDaemon(
   });
   let wsServer: VoiceAssistantWebSocketServer | null = null;
   let serviceProxyListenTarget: ListenTarget | null = null;
+
+  // Per-project user/global config layer. The store only needs PASEO_HOME, so
+  // it is created up front; the resolver also needs the registries (created
+  // below) and is assigned once they exist. Script/terminal/setup paths capture
+  // `resolveEffectiveProjectConfig`, which is only invoked after bootstrap
+  // completes, so the pre-registry disk fallback is just a safety net.
+  const globalProjectConfigStore = new GlobalProjectConfigStore({
+    configDir: path.join(config.paseoHome, "projects", "configs"),
+  });
+  let effectiveProjectConfigResolver: EffectiveProjectConfigResolver | null = null;
+  const resolveEffectiveProjectConfig = async (cwd: string): Promise<PaseoConfig | null> => {
+    if (effectiveProjectConfigResolver) {
+      return effectiveProjectConfigResolver.effectiveConfigByCwd(cwd);
+    }
+    const result = readPaseoConfig(cwd);
+    if (!result.ok) {
+      throw paseoConfigParseError(result);
+    }
+    return result.config;
+  };
+
   const scriptHealthMonitor = new ScriptHealthMonitor({
     serviceProxy,
     onChange: createScriptStatusEmitter({
@@ -704,6 +729,7 @@ export async function createPaseoDaemon(
       daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       resolveWorkspaceDirectory: async (workspaceId) =>
         (await workspaceRegistry?.get(workspaceId))?.cwd ?? null,
+      resolveEffectiveConfig: resolveEffectiveProjectConfig,
       logger,
       serviceProxyPublicBaseUrl,
     }),
@@ -887,6 +913,11 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
+  effectiveProjectConfigResolver = new EffectiveProjectConfigResolver({
+    projectRegistry,
+    workspaceRegistry,
+    store: globalProjectConfigStore,
+  });
   const workspaceLabelService = createWorkspaceLabelService({
     paseoHome: config.paseoHome,
     workspaceRegistry,
@@ -1359,6 +1390,7 @@ export async function createPaseoDaemon(
     createAgent,
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
+    resolveExistingWorkspace: (workspaceId) => workspaceRegistry.get(workspaceId),
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
@@ -1419,6 +1451,7 @@ export async function createPaseoDaemon(
       getDaemonTcpHost: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
       serviceProxyPublicBaseUrl,
       resolveScriptHealth: (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
+      resolveEffectiveConfig: resolveEffectiveProjectConfig,
       logger,
       emit: (message) => wsServer?.broadcast(wrapSessionMessage(message)),
       publishStatusUpdate: (message) => wsServer?.publishScriptStatusUpdate(message),
@@ -1739,6 +1772,7 @@ export async function createPaseoDaemon(
               pluginRuntime,
               orchestrationSkills,
               workspaceLabelService,
+              resolveEffectiveProjectConfig,
             );
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();

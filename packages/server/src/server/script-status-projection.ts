@@ -6,6 +6,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 import { getScriptConfigs, isServiceScript, readPaseoConfig } from "../utils/worktree.js";
+import { readPaseoWorktreeRuntimePort } from "../utils/worktree-metadata.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import type { ScriptHealthEntry, ScriptHealthState } from "./script-health-monitor.js";
 import type {
@@ -48,6 +49,25 @@ export function readPaseoConfigForProjection(
   return null;
 }
 
+async function resolveProjectionConfig(
+  workspaceDirectory: string,
+  resolveEffectiveConfig: ((cwd: string) => Promise<PaseoConfig | null>) | undefined,
+  logger: Logger,
+): Promise<PaseoConfig | null> {
+  if (!resolveEffectiveConfig) {
+    return readPaseoConfigForProjection(workspaceDirectory, logger);
+  }
+  try {
+    return await resolveEffectiveConfig(workspaceDirectory);
+  } catch (error) {
+    logger.warn(
+      { workspaceDirectory, err: error },
+      "Failed to resolve effective paseo.json; treating workspace as having no scripts",
+    );
+    return null;
+  }
+}
+
 function resolveDaemonPort(daemonPort: number | null | (() => number | null)): number | null {
   if (typeof daemonPort === "function") {
     return daemonPort();
@@ -79,6 +99,19 @@ interface BuildPayloadContext {
   serviceProxyPublicBaseUrl?: string | null;
   serviceProxy: ServiceProxySubsystem;
   resolveHealth?: (hostname: string) => ScriptHealthState | null;
+  // Deterministic per-worktree base port, exposed so a config-set previewUrl can
+  // resolve `$PASEO_WORKTREE_PORT`. Null for non-worktree workspaces.
+  worktreePort: number | null;
+}
+
+// The runtime port lives in the worktree's git-dir metadata; reading it throws
+// for a non-worktree directory (no `.git` file), so swallow that into null.
+function resolveWorktreePortForProjection(workspaceDirectory: string): number | null {
+  try {
+    return readPaseoWorktreeRuntimePort(workspaceDirectory);
+  } catch {
+    return null;
+  }
 }
 
 function projectWorkspaceServiceState(params: {
@@ -156,6 +189,8 @@ function buildConfiguredScriptPayload(
     localProxyUrl: urls.localProxyUrl,
     publicProxyUrl: urls.publicProxyUrl,
     proxyUrl: urls.proxyUrl,
+    ...(config.previewUrl ? { previewUrl: config.previewUrl } : {}),
+    ...(ctx.worktreePort !== null ? { worktreePort: ctx.worktreePort } : {}),
     lifecycle: runtimeEntry?.lifecycle ?? "stopped",
     health: toWireHealth(ctx.resolveHealth?.(hostname) ?? null),
     exitCode: runtimeEntry?.exitCode ?? null,
@@ -231,6 +266,7 @@ export function buildWorkspaceScriptPayloads(
     serviceProxyPublicBaseUrl: options.serviceProxyPublicBaseUrl,
     serviceProxy: options.serviceProxy,
     resolveHealth: options.resolveHealth,
+    worktreePort: resolveWorktreePortForProjection(workspaceDirectory),
   };
 
   const payloads: WorkspaceScriptPayload[] = [];
@@ -279,6 +315,7 @@ export function createScriptStatusEmitter({
   daemonPort,
   serviceProxyPublicBaseUrl,
   resolveWorkspaceDirectory,
+  resolveEffectiveConfig,
   logger,
 }: {
   sessions: () => SessionEmitter[];
@@ -287,6 +324,10 @@ export function createScriptStatusEmitter({
   daemonPort: number | null | (() => number | null);
   serviceProxyPublicBaseUrl?: string | null;
   resolveWorkspaceDirectory: (workspaceId: string) => string | null | Promise<string | null>;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for a workspace directory. When absent, reads the committed
+  // paseo.json directly.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   logger: Logger;
 }): (workspaceId: string, scripts: ScriptHealthEntry[]) => void {
   return (workspaceId, scripts) => {
@@ -304,7 +345,11 @@ export function createScriptStatusEmitter({
       const projected = buildWorkspaceScriptPayloads({
         workspaceId,
         workspaceDirectory,
-        paseoConfig: readPaseoConfigForProjection(workspaceDirectory, logger),
+        paseoConfig: await resolveProjectionConfig(
+          workspaceDirectory,
+          resolveEffectiveConfig,
+          logger,
+        ),
         serviceProxy,
         runtimeStore,
         daemonPort: resolvedDaemonPort,

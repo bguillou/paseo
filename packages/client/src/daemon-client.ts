@@ -43,6 +43,8 @@ import type {
   FileWriteResult,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
+  AgentPlansListResponseMessage,
+  AgentPlanEntry,
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommit,
@@ -57,6 +59,8 @@ import type {
   CheckoutPrMergeResponse,
   CheckoutPrMergeMethod,
   CheckoutForgeReplyCommentResponse,
+  CheckoutForgeResolveThreadResponse,
+  CheckoutForgeRequestReviewResponse,
   CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutForgeGetCheckDetailsResponse,
@@ -116,6 +120,8 @@ import type {
   SendAgentMessageRequest,
   PaseoConfigRaw,
   PaseoConfigRevision,
+  ProjectConfigSource,
+  ProjectConfigTarget,
   WorkspaceCreateRequest,
   WorkspaceRecoveryState,
   PluginListItem,
@@ -510,6 +516,8 @@ type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["payload"];
 type CheckoutForgeReplyCommentPayload = CheckoutForgeReplyCommentResponse["payload"];
+type CheckoutForgeResolveThreadPayload = CheckoutForgeResolveThreadResponse["payload"];
+type CheckoutForgeRequestReviewPayload = CheckoutForgeRequestReviewResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
 type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
@@ -581,6 +589,14 @@ type WriteProjectConfigPayload = Extract<
   SessionOutboundMessage,
   { type: "write_project_config_response" }
 >["payload"];
+type MigrateProjectConfigToGlobalPayload = Extract<
+  SessionOutboundMessage,
+  { type: "project.config.migrateToGlobal.response" }
+>["payload"];
+type DeleteProjectConfigFilePayload = Extract<
+  SessionOutboundMessage,
+  { type: "project.config.deleteProjectFile.response" }
+>["payload"];
 
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
@@ -591,6 +607,7 @@ export interface WriteProjectConfigInput {
   repoRoot: string;
   config: PaseoConfigRaw;
   expectedRevision: PaseoConfigRevision | null;
+  target?: ProjectConfigTarget;
   requestId?: string;
 }
 interface ListCommandsOptions {
@@ -653,6 +670,8 @@ type ScheduleUpdatePayload = Extract<
 >["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
+export type AgentPlansListPayload = AgentPlansListResponseMessage["payload"];
+export type { AgentPlanEntry };
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
 export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
@@ -735,6 +754,14 @@ function normalizeListCommandsOptions(
 export interface AgentForkContextOptions {
   boundaryCursor?: FetchAgentTimelineCursor;
   boundaryMessageId?: string;
+  requestId?: string;
+}
+
+export interface ListAgentPlansOptions {
+  /** Worktree scope: the workspace whose agents' plans to list. */
+  workspaceId?: string;
+  /** Falls back to resolving the enclosing workspace when no id is known. */
+  cwd?: string;
   requestId?: string;
 }
 
@@ -860,6 +887,8 @@ export interface CreateScheduleOptions {
           thinkingOptionId?: string;
           archiveOnFinish?: boolean;
           isolation?: "local" | "worktree";
+          // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+          existingWorkspaceId?: string;
           title?: string | null;
           providerOptions?: AgentSessionConfig["providerOptions"];
           systemPrompt?: string;
@@ -882,6 +911,8 @@ export interface UpdateScheduleNewAgentConfig {
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
   isolation?: "local" | "worktree";
+  // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+  existingWorkspaceId?: string | null;
   cwd?: string;
 }
 export interface UpdateScheduleOptions {
@@ -3447,6 +3478,44 @@ export class DaemonClient {
     return payload;
   }
 
+  /**
+   * Lists the plans produced by agents in one worktree so the composer can
+   * attach one as context. Pass `workspaceId` when known, else `cwd` for the
+   * daemon to resolve the enclosing workspace. Gate on the `agentPlanContext`
+   * host feature before calling.
+   */
+  async listAgentPlans(options: ListAgentPlansOptions = {}): Promise<AgentPlanEntry[]> {
+    const resolvedRequestId = this.createRequestId(options.requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.plans.list.request",
+      requestId: resolvedRequestId,
+      ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+      ...(options.cwd ? { cwd: options.cwd } : {}),
+    });
+
+    const payload = await this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 15000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.plans.list.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+
+    return payload.plans;
+  }
+
   // ============================================================================
   // Agent Interaction
   // ============================================================================
@@ -4355,6 +4424,56 @@ export class DaemonClient {
     });
   }
 
+  async checkoutForgeResolveThread(
+    cwd: string,
+    input: {
+      prNumber: number;
+      threadId: string;
+      resolved: boolean;
+      repoOwner?: string;
+      repoName?: string;
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeResolveThreadPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.resolve_thread.response">({
+      requestId,
+      message: {
+        type: "checkout.forge.resolve_thread.request",
+        cwd,
+        prNumber: input.prNumber,
+        threadId: input.threadId,
+        resolved: input.resolved,
+        ...(input.repoOwner ? { repoOwner: input.repoOwner } : {}),
+        ...(input.repoName ? { repoName: input.repoName } : {}),
+      },
+      timeout: 60000,
+    });
+  }
+
+  async checkoutForgeRequestReview(
+    cwd: string,
+    input: {
+      prNumber: number;
+      reviewerLogin: string;
+      repoOwner?: string;
+      repoName?: string;
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeRequestReviewPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.request_review.response">({
+      requestId,
+      message: {
+        type: "checkout.forge.request_review.request",
+        cwd,
+        prNumber: input.prNumber,
+        reviewerLogin: input.reviewerLogin,
+        ...(input.repoOwner ? { repoOwner: input.repoOwner } : {}),
+        ...(input.repoName ? { repoName: input.repoName } : {}),
+      },
+      timeout: 60000,
+    });
+  }
+
   async checkoutGithubSetAutoMerge(
     cwd: string,
     input: { enabled: true; method: CheckoutPrMergeMethod } | { enabled: false },
@@ -5248,12 +5367,16 @@ export class DaemonClient {
     this.sendSessionMessageStrict(response);
   }
 
-  async readProjectConfig(repoRoot: string, requestId?: string): Promise<ReadProjectConfigPayload> {
+  async readProjectConfig(
+    repoRoot: string,
+    options?: { source?: ProjectConfigSource; requestId?: string },
+  ): Promise<ReadProjectConfigPayload> {
     return this.sendCorrelatedSessionRequest({
-      requestId,
+      requestId: options?.requestId,
       message: {
         type: "read_project_config_request",
         repoRoot,
+        ...(options?.source ? { source: options.source } : {}),
       },
       responseType: "read_project_config_response",
     });
@@ -5267,8 +5390,37 @@ export class DaemonClient {
         repoRoot: input.repoRoot,
         config: input.config,
         expectedRevision: input.expectedRevision,
+        ...(input.target ? { target: input.target } : {}),
       },
       responseType: "write_project_config_response",
+    });
+  }
+
+  async migrateProjectConfigToGlobal(input: {
+    repoRoot: string;
+    requestId?: string;
+  }): Promise<MigrateProjectConfigToGlobalPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "project.config.migrateToGlobal.request",
+        repoRoot: input.repoRoot,
+      },
+      responseType: "project.config.migrateToGlobal.response",
+    });
+  }
+
+  async deleteProjectConfigFile(input: {
+    repoRoot: string;
+    requestId?: string;
+  }): Promise<DeleteProjectConfigFilePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "project.config.deleteProjectFile.request",
+        repoRoot: input.repoRoot,
+      },
+      responseType: "project.config.deleteProjectFile.response",
     });
   }
 

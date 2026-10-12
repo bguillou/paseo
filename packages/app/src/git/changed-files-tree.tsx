@@ -116,6 +116,7 @@ export function ChangedFilesTree({
           onDownload={mode.onDownload}
           onDuplicate={mode.onDuplicate}
           onRevert={mode.onRevert}
+          commentCount={mode.prReviewActions?.commentCountByPath.get(item.file.path)}
           testID={`diff-tree-file-${item.fileIndex}`}
         />
       );

@@ -162,7 +162,6 @@ export function CompactExplorerSidebarHost({
             workspaceId={model.workspaceId}
             workspaceRoot={model.workspaceRoot}
             isGit={model.isGit}
-            persistenceKey={model.persistenceKey}
             containerWidth={containerWidth}
             onOpenFile={handleOpenFile}
           />

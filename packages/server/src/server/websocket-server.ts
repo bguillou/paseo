@@ -14,6 +14,7 @@ import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
@@ -540,6 +541,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly creationService: CreationService;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly resolveEffectiveProjectConfig:
+    | ((cwd: string) => Promise<PaseoConfig | null>)
+    | undefined;
   private readonly workspaceLabelService: WorkspaceLabelService | null;
   private readonly scheduleService: ScheduleService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
@@ -659,6 +663,7 @@ export class VoiceAssistantWebSocketServer {
     pluginRuntime?: SessionOptions["pluginRuntime"],
     orchestrationSkills?: SessionOptions["orchestrationSkills"],
     workspaceLabelService?: WorkspaceLabelService,
+    resolveEffectiveProjectConfig?: (cwd: string) => Promise<PaseoConfig | null>,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -688,6 +693,7 @@ export class VoiceAssistantWebSocketServer {
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.workspaceLabelService = workspaceLabelService ?? null;
+    this.resolveEffectiveProjectConfig = resolveEffectiveProjectConfig;
     const requiredServices = requireWebSocketServices({
       scheduleService,
       checkoutDiffManager,
@@ -1483,6 +1489,7 @@ export class VoiceAssistantWebSocketServer {
       creationService: this.creationService,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
+      resolveEffectiveProjectConfig: this.resolveEffectiveProjectConfig,
       workspaceLabelService: this.workspaceLabelService ?? undefined,
       directorySync: this.directorySync,
       scheduleService: this.scheduleService,
@@ -1811,6 +1818,10 @@ export class VoiceAssistantWebSocketServer {
         checkoutForgeSetAutoMerge: true,
         // COMPAT(checkoutForgeReplyComment): added in v0.9.0, remove gate after 2027-10-07.
         checkoutForgeReplyComment: true,
+        // COMPAT(checkoutForgeResolveThread): added in v0.9.0, remove gate after 2027-10-07.
+        checkoutForgeResolveThread: true,
+        // COMPAT(checkoutForgeRequestReview): added in v0.11.0, remove gate after 2027-10-08.
+        checkoutForgeRequestReview: true,
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising it after
         // 2027-01-17 once supported floors are >= v0.2.0.
@@ -1865,12 +1876,16 @@ export class VoiceAssistantWebSocketServer {
         checkoutRefresh: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: true,
+        // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+        scheduleExistingWorktree: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: true,
+        // COMPAT(projectGlobalConfig): added in v0.9.0, remove gate after 2027-10-07.
+        projectGlobalConfig: true,
         // COMPAT(worktreeRestore): keep through 2027-01-11 for clients older than v0.1.105.
         worktreeRestore: true,
         // COMPAT(workspaceRecovery): added in v0.1.105, remove after 2027-01-11 once daemon floor >= v0.1.105.
@@ -1891,6 +1906,8 @@ export class VoiceAssistantWebSocketServer {
         agentForkContext: true,
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: true,
+        // COMPAT(agentPlanContext): added in v0.11.0, remove gate after 2027-04-09.
+        agentPlanContext: true,
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: true,
         // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain advertisement.

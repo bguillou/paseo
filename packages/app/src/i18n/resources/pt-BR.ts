@@ -153,6 +153,19 @@ export const ptBR: TranslationResources = {
     },
     attachments: {
       addImage: "Adicionar imagem",
+      addConversation: "Adicionar conversa",
+      conversationPickerTitle: "Anexar uma conversa",
+      conversationSearchPlaceholder: "Pesquisar conversas…",
+      conversationEmpty: "Nenhuma outra conversa neste projeto",
+      conversationUntitled: "Conversa sem título",
+      attachConversationFailed: "Falha ao anexar a conversa",
+      addPlan: "Adicionar plano",
+      planTitle: "Plano",
+      planPickerTitle: "Anexar um plano",
+      planSearchPlaceholder: "Buscar planos…",
+      planEmpty: "Nenhum plano neste worktree",
+      planUntitled: "Plano sem título",
+      attachPlanFailed: "Falha ao anexar o plano",
       pasteImage: "Colar imagem",
       addFile: "Enviar arquivo",
       addIssueOrPr: "Adicionar issue ou PR",
@@ -564,6 +577,7 @@ export const ptBR: TranslationResources = {
       },
       empty: {
         noCommands: "Nenhum comando de configuração foi executado para este workspace.",
+        notRun: "A configuração não foi executada para este workspace.",
       },
       accessibility: {
         noCommands: "Nenhum comando de configuração foi executado para este workspace",
@@ -616,6 +630,22 @@ export const ptBR: TranslationResources = {
       hostDisconnected: "Host não está conectado",
       updateHost: "Atualize o host para usar o renderizador de terminal nativo.",
       unableToSubscribe: "Não foi possível assinar o terminal",
+      createFailed: "Falha ao criar o terminal",
+    },
+    bottomDock: {
+      collapse: "Recolher painel",
+      expand: "Expandir painel",
+      newTerminal: "Novo terminal",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "Nenhum script configurado para este workspace.",
+        noOutput: "Execute um script para ver sua saída aqui.",
+      },
     },
     tabs: {
       loading: "Carregando...",
@@ -1003,6 +1033,12 @@ export const ptBR: TranslationResources = {
           addingToChat: "Adicionando...",
           reply: "Responder",
           sendingReply: "Enviando…",
+          resolve: "Resolver",
+          unresolve: "Reabrir",
+          resolving: "Resolvendo…",
+          openInDiff: "Abrir no diff",
+          showResolved: "Mostrar resolvidos",
+          hideResolved: "Ocultar resolvidos",
         },
         checksOverview: {
           headline: {
@@ -1053,8 +1089,12 @@ export const ptBR: TranslationResources = {
         sections: {
           checks: "Verificações",
           pipeline: "Pipeline",
-          reviews: "Revisões",
+          reviewers: "Revisores",
           activity: "Atividade",
+          stack: "Pilha",
+        },
+        stack: {
+          current: "Atual",
         },
         empty: {
           noJobs: "Sem jobs",
@@ -1092,6 +1132,16 @@ export const ptBR: TranslationResources = {
           requestedChanges: "Solicitou alterações",
           reviewed: "Revisou",
         },
+        reviewers: {
+          empty: "Ainda não há revisores",
+          requestReviewA11y: "Solicitar revisão novamente de {{login}}",
+          status: {
+            approved: "Aprovado",
+            changesRequested: "Alterações solicitadas",
+            waiting: "Aguardando",
+            commented: "Comentado",
+          },
+        },
         time: {
           justNow: "agora mesmo",
         },
@@ -1104,6 +1154,8 @@ export const ptBR: TranslationResources = {
           statusLoadFailed: "Não foi possível carregar o status da pull request",
           activityLoadFailed: "Não foi possível carregar a atividade da pull request",
           replyFailed: "Não foi possível publicar a resposta",
+          resolveFailed: "Não foi possível atualizar o tópico",
+          requestReviewFailed: "Não foi possível solicitar a revisão",
         },
       },
       forgeSetup: {
@@ -1177,6 +1229,12 @@ export const ptBR: TranslationResources = {
       working: "Em execução",
       done: "Concluído",
     },
+    prStatusBucket: {
+      inReview: "Em revisão",
+      inProgress: "Em andamento",
+      backlog: "Pendências",
+      done: "Concluído",
+    },
     display: {
       trigger: "Preferências de exibição",
       heading: "Exibição",
@@ -1184,6 +1242,7 @@ export const ptBR: TranslationResources = {
         label: "Agrupamento",
         project: "Projeto",
         status: "Status",
+        prStatus: "Status do PR",
         labels: "Etiquetas",
       },
       titleSource: {
@@ -2834,6 +2893,9 @@ export const ptBR: TranslationResources = {
         editScript: "Editar {{name}}",
         runAsService: "Executar como serviço",
         serviceHint: "O Paseo supervisiona o processo e atribui uma porta via $PASEO_PORT",
+        previewUrl: "URL de pré-visualização",
+        previewUrlHint:
+          "Substitui a URL que a pré-visualização abre. Use $PASEO_PORT para a porta atribuída, ex. http://localhost:$PASEO_PORT/app",
         actions: {
           add: "Adicionar script",
           edit: "Editar",
@@ -2856,6 +2918,34 @@ export const ptBR: TranslationResources = {
         failedTitle: "Não foi possível salvar paseo.json",
         failedDescription: "Tente novamente ou recarregue a versão mais recente do disco.",
       },
+      source: {
+        label: "Local da configuração",
+        projectFile: "Projeto",
+        global: "Este computador",
+      },
+      migrate: {
+        title: "Armazenar configuração neste computador",
+        description:
+          "Copia o paseo.json deste projeto para as suas configurações de usuário, para que nada precise ser commitado no repositório.",
+        confirmTitle: "Mover a configuração para este computador?",
+        confirmMessage:
+          "O paseo.json commitado é copiado para as suas configurações de usuário. Ele continua valendo até você removê-lo do repositório.",
+        confirmOverwriteMessage:
+          "Já existe uma configuração para este projeto neste computador e ela será substituída.",
+        moved: "Configuração copiada para este computador",
+        failedTitle: "Não foi possível mover a configuração",
+        committedStillPresentTitle: "paseo.json commitado ainda em uso",
+        committedStillPresentDescription:
+          "O paseo.json commitado tem prioridade. Remova-o do repositório (e commite a remoção) para que a configuração deste computador seja aplicada.",
+      },
+      delete: {
+        confirmTitle: "Remover o paseo.json commitado?",
+        confirmMessage:
+          "Exclui o paseo.json da árvore de trabalho para que a configuração deste computador tenha efeito. Commite a remoção para que novos worktrees não o restaurem.",
+        confirm: "Remover arquivo",
+        deleted: "paseo.json commitado removido",
+        failed: "Não foi possível remover paseo.json",
+      },
       actions: {
         reload: "Recarregar",
         tryAgain: "Tentar novamente",
@@ -2863,6 +2953,7 @@ export const ptBR: TranslationResources = {
         saved: "Projeto salvo",
         saving: "Salvando...",
         cancel: "Cancelar",
+        moveToGlobal: "Mover para este computador",
       },
     },
   },

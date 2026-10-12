@@ -80,6 +80,7 @@ import type {
   DiffTypography,
   TextMeasurer,
 } from "./types";
+import { findFocusLineTop } from "./focus-line";
 
 const AnimatedScrollView = createAnimatedComponent(ScrollView);
 const SYSTEM_MONO = "monospace";
@@ -258,16 +259,22 @@ export function DiffSurface(props: DiffSurfaceProps) {
     if (mode.kind !== "working") return;
     const focusPath = mode.focusPath;
     if (!focusPath) return;
-    const requestKey = `${mode.focusRequestId ?? "initial"}:${focusPath}`;
+    const requestKey = `${mode.focusRequestId ?? "initial"}:${focusPath}:${mode.focusLine ?? ""}`;
     if (consumedFocusRef.current === requestKey) return;
-    if (collapsedFilePaths.has(focusPath)) onToggleFile(focusPath);
-    const file = model.files.find((entry) => entry.path === focusPath);
-    if (file) {
-      scrollTop.value = file.top;
-      scrollRef.current?.scrollTo({ y: file.top, animated: false });
-      consumedFocusRef.current = requestKey;
+    if (collapsedFilePaths.has(focusPath)) {
+      // Expand first; the effect re-runs once the expanded rows exist, then scrolls.
+      onToggleFile(focusPath);
+      return;
     }
-  }, [collapsedFilePaths, mode, model.files, onToggleFile, scrollTop]);
+    const file = model.files.find((entry) => entry.path === focusPath);
+    if (!file) return;
+    const lineTop =
+      mode.focusLine !== undefined ? findFocusLineTop(model, focusPath, mode.focusLine) : null;
+    const y = lineTop ?? file.top;
+    scrollTop.value = y;
+    scrollRef.current?.scrollTo({ y, animated: false });
+    consumedFocusRef.current = requestKey;
+  }, [collapsedFilePaths, mode, model, onToggleFile, scrollTop]);
   const contentInsetBottom = props.contentInsetBottom ?? 0;
   const contentStyle = useMemo(
     () => ({

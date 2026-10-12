@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPrTimeline } from "./timeline";
+import { buildPrTimeline, isReviewEntryEmpty } from "./timeline";
+import type { PrReviewEntry, PrThreadEntry } from "./timeline";
 import type { PrPaneActivity } from "./data";
 
 function activity(overrides: Partial<PrPaneActivity> & { id: string }): PrPaneActivity {
@@ -139,5 +140,55 @@ describe("buildPrTimeline", () => {
     const review = activity({ id: "R1", kind: "review", reviewState: "approved" });
 
     expect(buildPrTimeline([review])).toEqual([{ kind: "single", id: "R1", activity: review }]);
+  });
+});
+
+describe("isReviewEntryEmpty", () => {
+  function reviewEntry(review: PrPaneActivity, threads: PrThreadEntry[] = []): PrReviewEntry {
+    return { kind: "review", id: review.id, review, threads };
+  }
+
+  it("is true when the review has no body and no threads", () => {
+    const review = activity({
+      id: "R1",
+      kind: "review",
+      reviewState: "changes_requested",
+      body: "",
+    });
+
+    expect(isReviewEntryEmpty(reviewEntry(review))).toBe(true);
+  });
+
+  it("is true when the body is only whitespace and there are no threads", () => {
+    const review = activity({ id: "R1", kind: "review", reviewState: "approved", body: "  \n  " });
+
+    expect(isReviewEntryEmpty(reviewEntry(review))).toBe(true);
+  });
+
+  it("is false when the review has a body", () => {
+    const review = activity({
+      id: "R1",
+      kind: "review",
+      reviewState: "changes_requested",
+      body: "Please fix these.",
+    });
+
+    expect(isReviewEntryEmpty(reviewEntry(review))).toBe(false);
+  });
+
+  it("is false when the review has visible threads", () => {
+    const review = activity({
+      id: "R1",
+      kind: "review",
+      reviewState: "changes_requested",
+      body: "",
+    });
+    const thread: PrThreadEntry = {
+      kind: "thread",
+      id: "thread:T1",
+      comments: [activity({ id: "t1", reviewId: "R1" })],
+    };
+
+    expect(isReviewEntryEmpty(reviewEntry(review, [thread]))).toBe(false);
   });
 });

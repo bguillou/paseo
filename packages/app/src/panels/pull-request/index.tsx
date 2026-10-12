@@ -56,6 +56,7 @@ export function PullRequestContent(input: {
   workspaceId?: string | null;
   cwd: string;
   prPane: UsePrPaneDataResult;
+  onOpenInDiff?: (location: { path: string; line: number }) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -78,6 +79,7 @@ export function PullRequestContent(input: {
           workspaceId: input.workspaceId,
           cwd: input.cwd,
         })}
+        onOpenInDiff={input.onOpenInDiff}
       />
     );
   }

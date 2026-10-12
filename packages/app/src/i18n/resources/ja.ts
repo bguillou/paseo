@@ -153,6 +153,19 @@ export const ja: TranslationResources = {
     },
     attachments: {
       addImage: "画像を追加",
+      addConversation: "会話を追加",
+      conversationPickerTitle: "会話を添付",
+      conversationSearchPlaceholder: "会話を検索…",
+      conversationEmpty: "このプロジェクトに他の会話はありません",
+      conversationUntitled: "無題の会話",
+      attachConversationFailed: "会話の添付に失敗しました",
+      addPlan: "プランを追加",
+      planTitle: "プラン",
+      planPickerTitle: "プランを添付",
+      planSearchPlaceholder: "プランを検索…",
+      planEmpty: "このワークツリーにプランはありません",
+      planUntitled: "無題のプラン",
+      attachPlanFailed: "プランの添付に失敗しました",
       pasteImage: "画像を貼り付け",
       addFile: "ファイルをアップロード",
       addIssueOrPr: "イシューまたはPRを追加",
@@ -565,6 +578,7 @@ export const ja: TranslationResources = {
       },
       empty: {
         noCommands: "このワークスペースでセットアップコマンドは実行されませんでした。",
+        notRun: "このワークスペースではセットアップが実行されていません。",
       },
       accessibility: {
         noCommands: "このワークスペースでセットアップコマンドは実行されませんでした",
@@ -617,6 +631,22 @@ export const ja: TranslationResources = {
       hostDisconnected: "ホストが接続されていません",
       updateHost: "ネイティブターミナルを使用するにはホストを更新してください。",
       unableToSubscribe: "ターミナルに接続できません",
+      createFailed: "ターミナルの作成に失敗しました",
+    },
+    bottomDock: {
+      collapse: "パネルを折りたたむ",
+      expand: "パネルを展開",
+      newTerminal: "新しいターミナル",
+      tabs: {
+        setup: "Setup",
+        run: "Run",
+        terminal: "Terminal",
+        terminalNumbered: "Terminal {{index}}",
+      },
+      run: {
+        empty: "このワークスペースに設定されたスクリプトはありません。",
+        noOutput: "スクリプトを実行すると、ここに出力が表示されます。",
+      },
     },
     tabs: {
       loading: "読み込み中...",
@@ -993,6 +1023,12 @@ export const ja: TranslationResources = {
           addingToChat: "追加中...",
           reply: "返信",
           sendingReply: "送信中…",
+          resolve: "解決",
+          unresolve: "未解決に戻す",
+          resolving: "処理中…",
+          openInDiff: "差分で開く",
+          showResolved: "解決済みを表示",
+          hideResolved: "解決済みを非表示",
         },
         checksOverview: {
           headline: {
@@ -1043,8 +1079,12 @@ export const ja: TranslationResources = {
         sections: {
           checks: "チェック",
           pipeline: "パイプライン",
-          reviews: "レビュー",
+          reviewers: "レビュー担当者",
           activity: "アクティビティ",
+          stack: "スタック",
+        },
+        stack: {
+          current: "現在",
         },
         empty: {
           noJobs: "ジョブなし",
@@ -1082,6 +1122,16 @@ export const ja: TranslationResources = {
           requestedChanges: "変更をリクエスト",
           reviewed: "レビュー済み",
         },
+        reviewers: {
+          empty: "レビュー担当者はまだいません",
+          requestReviewA11y: "{{login}} にレビューを再依頼",
+          status: {
+            approved: "承認済み",
+            changesRequested: "変更リクエスト",
+            waiting: "待機中",
+            commented: "コメント",
+          },
+        },
         time: {
           justNow: "たった今",
         },
@@ -1094,6 +1144,8 @@ export const ja: TranslationResources = {
           statusLoadFailed: "プルリクエストのステータスを読み込めません",
           activityLoadFailed: "プルリクエストのアクティビティを読み込めません",
           replyFailed: "返信を投稿できません",
+          resolveFailed: "スレッドを更新できません",
+          requestReviewFailed: "レビューをリクエストできません",
         },
       },
       forgeSetup: {
@@ -1164,6 +1216,12 @@ export const ja: TranslationResources = {
       working: "実行中",
       done: "完了",
     },
+    prStatusBucket: {
+      inReview: "レビュー中",
+      inProgress: "進行中",
+      backlog: "バックログ",
+      done: "完了",
+    },
     display: {
       trigger: "表示設定",
       heading: "表示",
@@ -1171,6 +1229,7 @@ export const ja: TranslationResources = {
         label: "グループ化",
         project: "プロジェクト",
         status: "ステータス",
+        prStatus: "PR ステータス",
         labels: "ラベル",
       },
       titleSource: {
@@ -2820,6 +2879,9 @@ export const ja: TranslationResources = {
         editScript: "{{name}}を編集",
         runAsService: "サービスとして実行",
         serviceHint: "Paseoがプロセスを監督し、$PASEO_PORTを通じてポートを割り当てます",
+        previewUrl: "プレビューURL",
+        previewUrlHint:
+          "プレビューが開くURLを上書きします。割り当てられたポートには $PASEO_PORT を使用します（例: http://localhost:$PASEO_PORT/app）。",
         actions: {
           add: "スクリプトを追加",
           edit: "編集",
@@ -2842,6 +2904,34 @@ export const ja: TranslationResources = {
         failedTitle: "paseo.jsonを保存できませんでした",
         failedDescription: "再試行するか、ディスクから最新バージョンを再読み込みしてください。",
       },
+      source: {
+        label: "設定の保存場所",
+        projectFile: "プロジェクト",
+        global: "このコンピュータ",
+      },
+      migrate: {
+        title: "このコンピュータに設定を保存",
+        description:
+          "このプロジェクトの paseo.json をユーザー設定にコピーし、リポジトリにコミットせずに済むようにします。",
+        confirmTitle: "設定をこのコンピュータに移動しますか？",
+        confirmMessage:
+          "コミット済みの paseo.json がユーザー設定にコピーされます。リポジトリから削除するまで優先され続けます。",
+        confirmOverwriteMessage:
+          "このプロジェクトの設定はこのコンピュータに既に存在し、上書きされます。",
+        moved: "設定をこのコンピュータにコピーしました",
+        failedTitle: "設定を移動できませんでした",
+        committedStillPresentTitle: "コミット済みの paseo.json がまだ使用されています",
+        committedStillPresentDescription:
+          "コミット済みの paseo.json が優先されます。このコンピュータの設定を適用するには、リポジトリから削除して（削除をコミットして）ください。",
+      },
+      delete: {
+        confirmTitle: "コミット済みの paseo.json を削除しますか？",
+        confirmMessage:
+          "このコンピュータの設定を有効にするため、作業ツリーから paseo.json を削除します。新しいワークツリーで復元されないよう、削除をコミットしてください。",
+        confirm: "ファイルを削除",
+        deleted: "コミット済みの paseo.json を削除しました",
+        failed: "paseo.json を削除できませんでした",
+      },
       actions: {
         reload: "再読み込み",
         tryAgain: "再試行",
@@ -2849,6 +2939,7 @@ export const ja: TranslationResources = {
         saved: "プロジェクトを保存しました",
         saving: "保存中...",
         cancel: "キャンセル",
+        moveToGlobal: "このコンピュータに移動",
       },
     },
   },

@@ -26,7 +26,10 @@ import {
   readPaseoConfigForProjection,
 } from "../../script-status-projection.js";
 import { deriveProjectServiceSlug, deriveProjectSlug } from "../../workspace-git-metadata.js";
-import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
+import type {
+  PaseoConfig,
+  PaseoServicePortAllocation,
+} from "@getpaseo/protocol/paseo-config-schema";
 
 type WorkspaceScriptsPayload = WorkspaceDescriptorPayload["scripts"];
 
@@ -43,6 +46,7 @@ export interface WorkspaceScriptsService {
   buildSnapshot(
     workspace: PersistedWorkspaceRecord,
     project?: PersistedProjectRecord | null,
+    paseoConfig?: PaseoConfig | null,
   ): WorkspaceScriptsPayload;
   emitStatusUpdate(workspaceId: string, workspaceDirectory: string): Promise<void>;
   list(workspaceId: string): Promise<WorkspaceScriptPayload[]>;
@@ -65,6 +69,9 @@ export function createWorkspaceScriptsService(deps: {
   serviceProxyPublicBaseUrl: string | null;
   resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | null;
   globalServicePorts?: PaseoServicePortAllocation;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for a workspace cwd. When absent, reads the committed paseo.json.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   logger: pino.Logger;
   emit: (message: SessionOutboundMessage) => void;
   // Script status is daemon state, so it reaches every client, not only the requester.
@@ -84,12 +91,30 @@ export function createWorkspaceScriptsService(deps: {
     serviceProxyPublicBaseUrl,
     resolveScriptHealth,
     globalServicePorts,
+    resolveEffectiveConfig,
     logger,
     emit,
     publishStatusUpdate,
     spawnWorkspaceScript,
     assertAutomationAllowed,
   } = deps;
+
+  async function resolveConfigFor(
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<PaseoConfig | null> {
+    if (!resolveEffectiveConfig) {
+      return readPaseoConfigForProjection(workspace.cwd, logger);
+    }
+    try {
+      return await resolveEffectiveConfig(workspace.cwd);
+    } catch (error) {
+      logger.warn(
+        { err: error, workspaceId: workspace.workspaceId },
+        "Failed to resolve effective paseo.json; treating workspace as having no scripts",
+      );
+      return null;
+    }
+  }
 
   function resolveGitMetadata(
     workspace: PersistedWorkspaceRecord,
@@ -115,6 +140,7 @@ export function createWorkspaceScriptsService(deps: {
   function buildSnapshot(
     workspace: PersistedWorkspaceRecord,
     project: PersistedProjectRecord | null = null,
+    paseoConfig?: PaseoConfig | null,
   ): WorkspaceScriptsPayload {
     if (!serviceProxy || !scriptRuntimeStore) {
       return [];
@@ -122,7 +148,10 @@ export function createWorkspaceScriptsService(deps: {
     return buildWorkspaceScriptPayloads({
       workspaceId: workspace.workspaceId,
       workspaceDirectory: workspace.cwd,
-      paseoConfig: readPaseoConfigForProjection(workspace.cwd, logger),
+      paseoConfig:
+        paseoConfig !== undefined
+          ? paseoConfig
+          : readPaseoConfigForProjection(workspace.cwd, logger),
       serviceProxy,
       runtimeStore: scriptRuntimeStore,
       daemonPort: getDaemonTcpPort?.() ?? null,
@@ -137,9 +166,10 @@ export function createWorkspaceScriptsService(deps: {
       const workspace = await workspaceRegistry.get(workspaceId);
       if (!workspace) return;
       const project = await projectRegistry.get(workspace.projectId);
+      const paseoConfig = await resolveConfigFor(workspace);
       publishStatusUpdate({
         type: "script_status_update",
-        payload: { workspaceId, scripts: buildSnapshot(workspace, project) },
+        payload: { workspaceId, scripts: buildSnapshot(workspace, project, paseoConfig) },
       });
     } catch (error) {
       logger.warn({ err: error, workspaceId }, "Failed to project workspace script status");
@@ -169,7 +199,8 @@ export function createWorkspaceScriptsService(deps: {
     requireAvailable();
     const workspace = await getWorkspace(workspaceId);
     const project = await projectRegistry.get(workspace.projectId);
-    return buildSnapshot(workspace, project);
+    const paseoConfig = await resolveConfigFor(workspace);
+    return buildSnapshot(workspace, project, paseoConfig);
   }
 
   async function launchProcess(input: { workspaceId: string; scriptName: string }) {
@@ -191,6 +222,7 @@ export function createWorkspaceScriptsService(deps: {
       runtimeStore: available.runtimeStore,
       terminalManager: available.terminalManager,
       globalServicePorts,
+      ...(resolveEffectiveConfig ? { resolveEffectiveConfig } : {}),
       logger,
       onLifecycleChanged: () => {
         void emitStatusUpdate(workspace.workspaceId, workspace.cwd);
@@ -204,7 +236,8 @@ export function createWorkspaceScriptsService(deps: {
     scriptName: string;
   }): Promise<WorkspaceScriptPayload> {
     const { workspace, project } = await launchProcess(input);
-    const script = buildSnapshot(workspace, project).find(
+    const paseoConfig = await resolveConfigFor(workspace);
+    const script = buildSnapshot(workspace, project, paseoConfig).find(
       (entry) => entry.scriptName === input.scriptName,
     );
     if (!script) {
@@ -232,7 +265,8 @@ export function createWorkspaceScriptsService(deps: {
     // The launcher's terminal exit listener owns route removal and runtime state updates.
     await available.terminalManager.killTerminalAndWait(runtime.terminalId);
 
-    const script = buildSnapshot(workspace, project).find(
+    const paseoConfig = await resolveConfigFor(workspace);
+    const script = buildSnapshot(workspace, project, paseoConfig).find(
       (entry) => entry.scriptName === input.scriptName,
     );
     if (!script) {

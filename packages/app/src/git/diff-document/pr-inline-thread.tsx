@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { Reply } from "lucide-react-native";
+import { Check, MessageSquarePlus, Reply } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -83,6 +83,15 @@ function PrInlineThreadBlock({
     (body: string) => actions.onReply(thread, body),
     [actions, thread],
   );
+  const { onAddThreadToChat, onResolveThread } = actions;
+  const handleAddToChat = useCallback(
+    () => onAddThreadToChat?.(thread.key),
+    [onAddThreadToChat, thread.key],
+  );
+  const handleResolve = useCallback(
+    () => onResolveThread?.({ threadKey: thread.key, resolved: !thread.isResolved }),
+    [onResolveThread, thread.key, thread.isResolved],
+  );
 
   return (
     <View style={styles.block}>
@@ -100,7 +109,7 @@ function PrInlineThreadBlock({
       {open ? (
         <PrInlineComposer onCancel={handleClose} onReply={handleReply} />
       ) : (
-        <View style={styles.replyButtonRow}>
+        <View style={styles.actionRow}>
           <Button
             variant="ghost"
             size="xs"
@@ -110,6 +119,32 @@ function PrInlineThreadBlock({
           >
             {t("workspace.git.pr.actions.reply")}
           </Button>
+          {onAddThreadToChat ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              leftIcon={MessageSquarePlus}
+              onPress={handleAddToChat}
+              testID={`pr-inline-add-to-chat-${thread.key}`}
+            >
+              {t("workspace.git.pr.actions.addToChat")}
+            </Button>
+          ) : null}
+          {onResolveThread ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              leftIcon={Check}
+              onPress={handleResolve}
+              testID={`pr-inline-resolve-${thread.key}`}
+            >
+              {t(
+                thread.isResolved
+                  ? "workspace.git.pr.actions.unresolve"
+                  : "workspace.git.pr.actions.resolve",
+              )}
+            </Button>
+          ) : null}
         </View>
       )}
     </View>
@@ -281,10 +316,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontSize: 12,
     color: theme.colors.foreground,
   },
-  replyButtonRow: {
+  actionRow: {
     height: PR_INLINE_REPLY_BUTTON_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
+    gap: theme.spacing[1],
   },
   composer: {
     height: PR_INLINE_EDITOR_HEIGHT,

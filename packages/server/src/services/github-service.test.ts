@@ -23,7 +23,7 @@ const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
 const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
 const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,reviewRequests,latestReviews,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 const FORK_PR_QUERY = "state=all&per_page=100&head=forkOwner%3Afeature%2Ffork";
 
@@ -831,6 +831,44 @@ describe("ForgeService", () => {
       repoName: "repo",
       url: "https://github.acme.internal/acme/repo/pull/42",
     });
+  });
+
+  it("builds the reviewer roster from latest reviews and requested reviewers", async () => {
+    const runner = createRunner([
+      currentPullRequestJson({
+        latestReviews: [
+          { author: { login: "octocat" }, state: "APPROVED" },
+          { author: { login: "hubot" }, state: "CHANGES_REQUESTED" },
+          { author: { login: "monalisa" }, state: "COMMENTED" },
+          // A dismissed review carries no current verdict and is dropped.
+          { author: { login: "ghost" }, state: "DISMISSED" },
+        ],
+        reviewRequests: [
+          { __typename: "User", login: "ada" },
+          { __typename: "Team", name: "Core", slug: "core" },
+          // Re-requested after approving: pending overrides the prior verdict.
+          { __typename: "User", login: "octocat" },
+        ],
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 0,
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+
+    expect(status?.reviewers).toEqual([
+      { login: "octocat", state: "pending" },
+      { login: "hubot", state: "changes_requested" },
+      { login: "monalisa", state: "commented" },
+      { login: "ada", state: "pending" },
+      { login: "Core", state: "pending", isTeam: true },
+    ]);
   });
 
   it("polls PR status at fast cadence while checks are pending", async () => {
@@ -2788,6 +2826,7 @@ describe("ForgeService", () => {
       ],
       checksStatus: "success",
       reviewDecision: "pending",
+      reviewers: [],
     });
   });
 
@@ -4533,6 +4572,32 @@ describe("ForgeService", () => {
     ]);
   });
 
+  it("re-requests a review through the requested_reviewers endpoint", async () => {
+    const runner = createRunner([JSON.stringify({ owner: { login: "acme" }, name: "repo" }), "{}"]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveRepoHost: async () => null,
+    });
+
+    await expect(
+      service.requestReview?.({
+        cwd: "/tmp/repo",
+        prNumber: 42,
+        reviewerLogin: "octocat",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(runner.calls[0]?.args).toEqual(["repo", "view", "--json", "owner,name,parent"]);
+    expect(runner.calls[1]?.args).toEqual([
+      "api",
+      "-X",
+      "POST",
+      "repos/acme/repo/pulls/42/requested_reviewers",
+      "-f",
+      "reviewers[]=octocat",
+    ]);
+  });
+
   it("routes gh calls to the resolved GitHub Enterprise host via GH_HOST", async () => {
     const runner = createRunner([
       JSON.stringify({ owner: { login: "acme" }, name: "repo" }),
@@ -4804,5 +4869,44 @@ describe("createGitHubService replyToComment", () => {
     expect(call?.args.slice(0, 2)).toEqual(["api", "graphql"]);
     expect(call?.args).toContain("threadId=PRRT_node");
     expect(call?.args).toContain("body=looks good");
+  });
+});
+
+describe("createGitHubService setThreadResolved", () => {
+  it("resolves a review thread via GraphQL", async () => {
+    const runner = createRunner([
+      JSON.stringify({ data: { resolveReviewThread: { thread: { isResolved: true } } } }),
+    ]);
+    const service = createGitHubService({ runner: runner.runner });
+
+    const result = await service.setThreadResolved?.({
+      cwd: "/tmp/repo",
+      prNumber: 42,
+      threadId: "PRRT_node",
+      resolved: true,
+    });
+
+    expect(result).toEqual({ resolved: true });
+    const call = runner.calls[0];
+    expect(call?.args.slice(0, 2)).toEqual(["api", "graphql"]);
+    expect(call?.args[3]).toContain("resolveReviewThread");
+    expect(call?.args).toContain("threadId=PRRT_node");
+  });
+
+  it("reopens a review thread via the unresolve mutation", async () => {
+    const runner = createRunner([
+      JSON.stringify({ data: { unresolveReviewThread: { thread: { isResolved: false } } } }),
+    ]);
+    const service = createGitHubService({ runner: runner.runner });
+
+    const result = await service.setThreadResolved?.({
+      cwd: "/tmp/repo",
+      prNumber: 42,
+      threadId: "PRRT_node",
+      resolved: false,
+    });
+
+    expect(result).toEqual({ resolved: false });
+    expect(runner.calls[0]?.args[3]).toContain("unresolveReviewThread");
   });
 });

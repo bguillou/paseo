@@ -56,6 +56,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useComposerHeight } from "./height";
+import { PlanModeStripes } from "./plan-mode-stripes";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import type { NativePastedFile } from "@/composer/native-pasted-image";
 import {
@@ -169,6 +170,8 @@ export interface MessageInputProps {
   inputMode?: ComposerInputMode;
   /** Renders `value` as static text on the same surface, for content there is nothing to type into. */
   readOnly?: boolean;
+  /** When true, paints a diagonal hatch behind the input to signal the agent is in plan mode. */
+  planModeActive?: boolean;
   /** Command issued when application state must replace native-owned text. */
   textReplacement: TextReplacement;
   /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
@@ -1081,6 +1084,7 @@ interface ResolvedMessageInputProps {
   attachmentSlot: React.ReactNode;
   inputMode: ComposerInputMode;
   readOnly: boolean;
+  planModeActive: boolean;
   textReplacement: TextReplacement;
   submitLabel: string | undefined;
 }
@@ -1128,6 +1132,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     attachmentSlot: props.attachmentSlot,
     inputMode: props.inputMode ?? "chat",
     readOnly: props.readOnly ?? false,
+    planModeActive: props.planModeActive ?? false,
     textReplacement: props.textReplacement,
     submitLabel: props.submitLabel,
   };
@@ -1183,6 +1188,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       attachmentSlot,
       inputMode,
       readOnly,
+      planModeActive,
       textReplacement,
       submitLabel,
     } = resolveMessageInputProps(props);
@@ -1798,6 +1804,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           style={inputWrapperCombinedStyle}
           pointerEvents={surfacePresentation.input.pointerEvents}
         >
+          <PlanModeStripes active={planModeActive} testID="composer-plan-mode-stripes" />
           {attachmentSlot}
           {/* Text input */}
           <RenderProfile id="ComposerTextSurface">
@@ -1921,6 +1928,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
+    // Establish a stacking context so the plan-mode hatch (zIndex -1) paints above this surface
+    // fill but below the in-flow text/toolbar. Without it the negative-z child sinks behind the
+    // background on web. The dictation overlay stays on top as a later sibling of this wrapper.
+    zIndex: 0,
     paddingTop: {
       xs: theme.spacing[2],
       md: theme.spacing[4],

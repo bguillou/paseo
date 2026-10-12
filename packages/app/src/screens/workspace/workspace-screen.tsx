@@ -213,6 +213,7 @@ import { useHasPullRequest, usePullRequestAutoAdd } from "@/panels/pull-request"
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
+const EMPTY_TERMINAL_IDS: readonly string[] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
 const EMPTY_SET = new Set<string>();
 
@@ -986,7 +987,6 @@ function WorkspaceHeaderTitleBar({
   currentBranchName,
   baseBranchName,
   isGitCheckout,
-  isPaseoOwnedWorktree,
   workspaceDirectory,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -1010,10 +1010,11 @@ function WorkspaceHeaderTitleBar({
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
-  // Re-pointing the base is worktree-only and gated on the daemon feature; otherwise the base
-  // renders read-only inside the switcher.
+  // Re-pointing the base is gated on the daemon feature; the daemon persists it in worktree.json
+  // for Paseo worktrees and in the base-ref override sidecar for other checkouts. When the daemon
+  // is too old, the base renders read-only inside the switcher.
   const daemonSupportsSetBaseRef = useHostFeature(normalizedServerId, "checkoutSetBaseRef");
-  const canChangeBase = isPaseoOwnedWorktree && daemonSupportsSetBaseRef;
+  const canChangeBase = daemonSupportsSetBaseRef;
   return (
     <View style={styles.headerTitleContainer}>
       {isLoading ? (
@@ -1736,13 +1737,11 @@ function WorkspaceScreenContent({
     handleViewScriptTerminal,
     invalidateTerminals,
     killMutation: killTerminalMutation,
-    knownTerminalIds,
     liveTerminalIds,
     pendingCreateInput: pendingTerminalCreateInput,
     query: terminalsQuery,
     queryKey: terminalsQueryKey,
     removeTerminalFromCache,
-    standaloneTerminalIds,
   } = useWorkspaceTerminals({
     client,
     isConnected,
@@ -1759,6 +1758,21 @@ function WorkspaceScreenContent({
     onTerminalCreateQueued: handleTerminalCreateQueued,
     onTerminalCreateFailed: handleTerminalCreateFailed,
   });
+  // Terminals are owned by the workspace bottom dock, not the pane tab system.
+  // The only terminals allowed as workspace tabs are live script terminals that
+  // were explicitly surfaced (e.g. the header "view terminal"); standalone dock
+  // terminals must never be auto-opened here (which would render them twice and
+  // fight over the terminal session).
+  const workspaceTerminalTabIds = useMemo(() => {
+    const live = new Set(liveTerminalIds);
+    const allowed = new Set<string>();
+    for (const script of workspaceScripts) {
+      if (script.terminalId && live.has(script.terminalId)) {
+        allowed.add(script.terminalId);
+      }
+    }
+    return allowed;
+  }, [liveTerminalIds, workspaceScripts]);
   const { archiveAgent } = useArchiveAgent();
 
   const { checkoutQuery, isCheckoutStatusLoading } = useWorkspaceCheckoutStatus({
@@ -2082,8 +2096,8 @@ function WorkspaceScreenContent({
         agentVisibility: workspaceAgentVisibility,
         agentsHydrated: hasHydratedAgents,
         terminalsHydrated: terminalsQuery.isSuccess,
-        knownTerminalIds,
-        standaloneTerminalIds,
+        knownTerminalIds: workspaceTerminalTabIds,
+        standaloneTerminalIds: EMPTY_TERMINAL_IDS,
         hasActivePendingTerminalCreate:
           createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
@@ -2100,8 +2114,7 @@ function WorkspaceScreenContent({
     pendingByDraftId,
     persistenceKey,
     reconcileWorkspaceTabs,
-    knownTerminalIds,
-    standaloneTerminalIds,
+    workspaceTerminalTabIds,
     terminalsQuery.isSuccess,
     uiTabs,
     workspaceAgentVisibility,

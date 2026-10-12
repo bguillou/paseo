@@ -55,8 +55,8 @@ Cmd+E shows or hides Explorer without changing its selected view. Compact layout
 full-screen Explorer overlay for Changes, Files, and pull requests, and close it after a file opens. Compact Changes has no tree rail; its overview is the Jump to file action (`packages/app/src/git/jump-to-file/`), a sheet over the same changed-files tree the desktop rail renders.
 Wide native layouts without pane splits use the same combined content in a resizable inline dock;
 opening a file leaves that dock visible. Both presentations keep their selection in the panel store
-and reuse the layout store's per-workspace Explorer width. They do not create a second Explorer
-lifecycle.
+and reuse the layout store's Explorer width, which is one shared value across every workspace. They
+do not create a second Explorer lifecycle.
 
 ## Side pane
 

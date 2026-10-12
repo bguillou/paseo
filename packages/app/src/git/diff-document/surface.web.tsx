@@ -16,6 +16,7 @@ import { PrInlineThread } from "./pr-inline-thread";
 import type { PrInlineActions, PrInlineThreadData } from "./pr-inline";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
+import { findFocusLineTop } from "./focus-line";
 import { DocumentFileHeader } from "./document-file-header";
 import {
   diffInteractionWindowTop,
@@ -481,15 +482,20 @@ export function DiffSurface(props: DiffSurfaceProps) {
     if (mode.kind !== "working") return;
     const focusPath = mode.focusPath;
     if (!focusPath) return;
-    const requestKey = `${mode.focusRequestId ?? "initial"}:${focusPath}`;
+    const requestKey = `${mode.focusRequestId ?? "initial"}:${focusPath}:${mode.focusLine ?? ""}`;
     if (consumedFocusRef.current === requestKey) return;
-    if (collapsedFilePaths.has(focusPath)) onToggleFile(focusPath);
-    const file = model.files.find((entry) => entry.path === focusPath);
-    if (file && scrollRef.current) {
-      scrollRef.current.scrollTop = file.top;
-      consumedFocusRef.current = requestKey;
+    if (collapsedFilePaths.has(focusPath)) {
+      // Expand first; the effect re-runs once the expanded rows exist, then scrolls.
+      onToggleFile(focusPath);
+      return;
     }
-  }, [collapsedFilePaths, mode, model.files, onToggleFile]);
+    const file = model.files.find((entry) => entry.path === focusPath);
+    if (!file || !scrollRef.current) return;
+    const lineTop =
+      mode.focusLine !== undefined ? findFocusLineTop(model, focusPath, mode.focusLine) : null;
+    scrollRef.current.scrollTop = lineTop ?? file.top;
+    consumedFocusRef.current = requestKey;
+  }, [collapsedFilePaths, mode, model, onToggleFile]);
 
   const handleVerticalScroll = useCallback(
     (scrollElement: HTMLDivElement) => {

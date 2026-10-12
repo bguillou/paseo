@@ -39,9 +39,14 @@ function makeWorkspace(
     archiveUnpushedCommitCount: null,
     scripts: [],
     hasRunningScripts: false,
+    hasUserMessage: false,
     labels,
   };
   return { placement, entry };
+}
+
+function groupRowIds(group: { rows: Array<{ workspaceId: string }> }): string[] {
+  return group.rows.map((entry) => entry.workspaceId);
 }
 
 function makeProject(
@@ -66,7 +71,7 @@ function makeProject(
 }
 
 function projectionInput(options?: {
-  groupMode?: "project" | "status";
+  groupMode?: "project" | "status" | "pr_status";
   pinnedCollapsed?: boolean;
 }) {
   const pinned = makeWorkspace("pinned", "running");
@@ -95,7 +100,7 @@ function projectionInput(options?: {
  * Two projects, one workspace each, both labelled — so every grouping mode puts rows from more
  * than one project on screen, and a mode that asked for fewer icons than it renders would show it.
  */
-function twoProjectInput(groupMode: "project" | "status") {
+function twoProjectInput(groupMode: "project" | "status" | "pr_status") {
   const first = makeWorkspace("first", "running", ["Urgent"], "project");
   const second = makeWorkspace("second", "needs_input", ["Backend"], "other-project");
   return {
@@ -116,7 +121,7 @@ function twoProjectInput(groupMode: "project" | "status") {
 describe("buildSidebarProjection", () => {
   // The rule that outlived the bug it was written for: a project icon is fetched per project, so
   // whatever a mode groups by, the rows it produces can only reference projects already covered.
-  for (const groupMode of ["project", "status"] as const) {
+  for (const groupMode of ["project", "status", "pr_status"] as const) {
     it(`covers every row ${groupMode} grouping renders with a project icon target`, () => {
       const projection = buildSidebarProjection(twoProjectInput(groupMode));
       const covered = new Set(projection.projectIconTargets.map((target) => target.projectViewKey));
@@ -164,6 +169,48 @@ describe("buildSidebarProjection", () => {
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "pinned" },
       { serverId: "srv", workspaceId: "unpinned" },
+    ]);
+  });
+
+  it("groups unpinned workspaces by PR-status lifecycle", () => {
+    const merged = makeWorkspace("merged");
+    merged.entry.prHint = {
+      url: "https://github.com/acme/repo/pull/1",
+      number: 1,
+      state: "merged",
+      forge: "github",
+    };
+    const open = makeWorkspace("open");
+    open.entry.prHint = {
+      url: "https://github.com/acme/repo/pull/2",
+      number: 2,
+      state: "open",
+      forge: "github",
+    };
+    const progress = makeWorkspace("progress");
+    progress.entry.hasUserMessage = true;
+    const backlog = makeWorkspace("backlog");
+
+    const entries = [merged, open, progress, backlog];
+    const projection = buildSidebarProjection({
+      ...projectionInput({ groupMode: "pr_status" }),
+      projects: [makeProject(entries.map((w) => w.placement))],
+      pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
+      pinnedWorkspaceOrder: [],
+      workspaceEntriesByKey: new Map(entries.map((w) => [w.entry.workspaceKey, w.entry])),
+    });
+
+    expect(projection.workspaceGroups.map((group) => group.key)).toEqual([
+      "pr_status:in_review",
+      "pr_status:in_progress",
+      "pr_status:backlog",
+      "pr_status:done",
+    ]);
+    expect(projection.workspaceGroups.map(groupRowIds)).toEqual([
+      ["open"],
+      ["progress"],
+      ["backlog"],
+      ["merged"],
     ]);
   });
 

@@ -54,6 +54,9 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   archiveUnpushedCommitCount: number | null;
   scripts: WorkspaceDescriptor["scripts"];
   hasRunningScripts: boolean;
+  // True once any agent in the workspace has received a first user message. Separates
+  // "in progress" from "backlog" in the PR-status grouping; see `WorkspaceAgentActivity`.
+  hasUserMessage: boolean;
 }
 
 export interface SidebarProjectEntry {
@@ -184,6 +187,7 @@ export function createSidebarWorkspaceEntry(input: {
     archiveUnpushedCommitCount: input.workspace.gitRuntime?.aheadOfOrigin ?? null,
     scripts: input.workspace.scripts,
     hasRunningScripts: input.workspace.scripts.some((script) => script.lifecycle === "running"),
+    hasUserMessage: input.workspaceAgentActivity?.get(input.workspace.id)?.hasUserMessage ?? false,
   };
 }
 

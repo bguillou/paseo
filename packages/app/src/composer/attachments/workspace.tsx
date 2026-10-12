@@ -64,6 +64,9 @@ function getOpenAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Open chat history attachment";
   }
+  if (attachment.kind === "plan_context") {
+    return "Open plan attachment";
+  }
   return t("composer.attachments.openReview");
 }
 
@@ -80,12 +83,18 @@ function getRemoveAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Remove chat history attachment";
   }
+  if (attachment.kind === "plan_context") {
+    return "Remove plan attachment";
+  }
   return t("composer.attachments.removeReview");
 }
 
 function getPillTestID(attachment: WorkspaceComposerAttachment): string {
   if (attachment.kind === "chat_history") {
     return "composer-chat-history-attachment-pill";
+  }
+  if (attachment.kind === "plan_context") {
+    return "composer-plan-attachment-pill";
   }
   return "composer-review-attachment-pill";
 }
@@ -168,6 +177,7 @@ function useWorkspaceAttachmentBinding({
         if (
           selected.kind === "browser_element" ||
           selected.kind === "chat_history" ||
+          selected.kind === "plan_context" ||
           isPullRequestContextAttachment(selected)
         ) {
           const selectedKey = getAttachmentKey(selected);

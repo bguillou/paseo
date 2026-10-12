@@ -70,13 +70,18 @@ let workspaceArchiveInProgress = false;
 
 type TestScheduleServiceOptions = Omit<
   ScheduleServiceOptions,
-  "createAgent" | "createDirectoryWorkspace" | "createPaseoWorktreeWorkspace" | "archiveWorkspace"
+  | "createAgent"
+  | "createDirectoryWorkspace"
+  | "createPaseoWorktreeWorkspace"
+  | "resolveExistingWorkspace"
+  | "archiveWorkspace"
 > & {
   agentManager: AgentManager;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
   createAgent?: ScheduleServiceOptions["createAgent"];
   createDirectoryWorkspace?: ScheduleServiceOptions["createDirectoryWorkspace"];
   createPaseoWorktreeWorkspace?: ScheduleServiceOptions["createPaseoWorktreeWorkspace"];
+  resolveExistingWorkspace?: ScheduleServiceOptions["resolveExistingWorkspace"];
   archiveWorkspace?: ScheduleServiceOptions["archiveWorkspace"];
 };
 
@@ -176,6 +181,8 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
           created: true,
         };
       }),
+    resolveExistingWorkspace:
+      options.resolveExistingWorkspace ?? (async (id) => workspaces.get(id) ?? null),
     archiveWorkspace: options.archiveWorkspace ?? archiveDefaultWorkspace,
   });
 }
@@ -3314,5 +3321,104 @@ describe("ScheduleService", () => {
     now = new Date("2026-01-01T00:01:00.000Z");
     expect(await service.completeForAgent(agentId)).toBe(1);
     expect(await service.completeForAgent(agentId)).toBe(0);
+  });
+
+  test("reuses a chosen existing worktree and never archives it", async () => {
+    const worktreeCwd = join(tempDir, "worktrees", "feature");
+    await mkdir(worktreeCwd, { recursive: true });
+    const iso = "2026-01-01T00:00:00.000Z";
+    const existingWorktree: PersistedWorkspaceRecord = {
+      workspaceId: "ws-existing",
+      projectId: "test-project",
+      cwd: worktreeCwd,
+      kind: "worktree",
+      displayName: "feature",
+      title: "feature",
+      branch: "feature",
+      baseBranch: null,
+      createdAt: iso,
+      updatedAt: iso,
+      archivedAt: null,
+    };
+    const archiveWorkspace = vi.fn(async () => {});
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: createTestAgentClients(),
+      registry: agentStorage,
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      resolveExistingWorkspace: async (id) => (id === "ws-existing" ? existingWorktree : null),
+      archiveWorkspace,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "run inside my worktree",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          model: "test-model",
+          cwd: tempDir,
+          isolation: "worktree",
+          existingWorkspaceId: "ws-existing",
+        },
+      },
+      maxRuns: 1,
+    });
+
+    await service.tick();
+
+    const inspected = await service.inspect(created.id);
+    expect(inspected.runs).toHaveLength(1);
+    expect(inspected.runs[0]!.workspaceId).toBe("ws-existing");
+    const agent = await agentStorage.get(inspected.runs[0]!.agentId!);
+    expect(agent?.cwd).toBe(worktreeCwd);
+    expect(agent?.workspaceId).toBe("ws-existing");
+    // The user owns this worktree; a scheduled run must leave it in place.
+    expect(archiveWorkspace).not.toHaveBeenCalled();
+  });
+
+  test("fails the run when the chosen existing worktree is gone", async () => {
+    const archiveWorkspace = vi.fn(async () => {});
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      resolveExistingWorkspace: async () => null,
+      archiveWorkspace,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "run inside a missing worktree",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          cwd: tempDir,
+          isolation: "worktree",
+          existingWorkspaceId: "ws-missing",
+        },
+      },
+      runOnCreate: false,
+    });
+
+    await expect(
+      (service as unknown as ScheduleServiceInternals).executeSchedule(
+        created as unknown as StoredSchedule,
+        "run-gone",
+      ),
+    ).rejects.toBeInstanceOf(ScheduleTargetGoneError);
+    expect(archiveWorkspace).not.toHaveBeenCalled();
   });
 });

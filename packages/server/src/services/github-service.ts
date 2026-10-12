@@ -42,6 +42,8 @@ import type {
   PullRequestCommandStatus,
   PullRequestMergeMethod,
   PullRequestReviewDecision,
+  PullRequestReviewer,
+  PullRequestReviewerState,
   PullRequestSummary,
   PullRequestTimeline,
   PullRequestTimelineError,
@@ -85,6 +87,8 @@ export type {
   PullRequestMergeMethod,
   PullRequestMergeResult,
   PullRequestReviewDecision,
+  PullRequestReviewer,
+  PullRequestReviewerState,
   PullRequestSummary,
   PullRequestTimeline,
   PullRequestTimelineCommentLocation,
@@ -333,6 +337,28 @@ const GitHubPullRequestFactsGraphqlSchema = z.object({
   }),
 });
 
+// Shared gh-CLI-JSON shape for the reviewer roster. The batch GraphQL poll path
+// reshapes its nested nodes into these same flat entries (see
+// toBatchCurrentPullRequestItem) so reviewer construction stays one code path.
+const RawLatestReviewSchema = z.object({
+  author: z
+    .object({
+      login: z.string().optional(),
+      avatarUrl: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  state: z.string().optional(),
+});
+const RawReviewRequestSchema = z.object({
+  __typename: z.string().optional(),
+  // Users carry `login`; teams carry `name`/`slug`.
+  login: z.string().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  name: z.string().optional(),
+  slug: z.string().optional(),
+});
+
 const CurrentPullRequestStatusSchema = z.object({
   number: z.number().optional(),
   url: z.string().catch(""),
@@ -345,6 +371,8 @@ const CurrentPullRequestStatusSchema = z.object({
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
   reviewDecision: z.unknown().optional(),
+  latestReviews: z.array(RawLatestReviewSchema).optional().catch(undefined),
+  reviewRequests: z.array(RawReviewRequestSchema).optional().catch(undefined),
   mergeable: PullRequestMergeableSchema.optional().default("UNKNOWN"),
   headRepositoryOwner: HeadRepositoryOwnerSchema,
 });
@@ -520,7 +548,7 @@ query PullRequestCheckoutTarget($owner: String!, $name: String!, $number: Int!) 
 }`;
 
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,reviewRequests,latestReviews,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 const PULL_REQUEST_STATUS_FACTS_QUERY = `
@@ -566,6 +594,40 @@ const AddReviewThreadReplyGraphqlSchema = z.object({
         .object({
           comment: z.object({ url: z.string().optional() }).nullable().optional(),
         })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+const RESOLVE_REVIEW_THREAD_MUTATION = `
+mutation ResolveReviewThread($threadId: ID!) {
+  resolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      isResolved
+    }
+  }
+}`;
+
+const UNRESOLVE_REVIEW_THREAD_MUTATION = `
+mutation UnresolveReviewThread($threadId: ID!) {
+  unresolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      isResolved
+    }
+  }
+}`;
+
+const SetReviewThreadResolvedGraphqlSchema = z.object({
+  data: z
+    .object({
+      resolveReviewThread: z
+        .object({ thread: z.object({ isResolved: z.boolean() }).nullable().optional() })
+        .nullable()
+        .optional(),
+      unresolveReviewThread: z
+        .object({ thread: z.object({ isResolved: z.boolean() }).nullable().optional() })
         .nullable()
         .optional(),
     })
@@ -662,6 +724,48 @@ const BatchPollPrNodeSchema = z.object({
   mergedAt: z.string().nullable().optional(),
   mergeable: PullRequestMergeableSchema.optional().default("UNKNOWN"),
   reviewDecision: z.unknown().optional(),
+  reviewRequests: z
+    .object({
+      nodes: z
+        .array(
+          z.object({
+            requestedReviewer: z
+              .object({
+                __typename: z.string().optional(),
+                login: z.string().optional(),
+                avatarUrl: z.string().nullable().optional(),
+                name: z.string().optional(),
+                slug: z.string().optional(),
+              })
+              .nullable()
+              .optional(),
+          }),
+        )
+        .optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
+  latestReviews: z
+    .object({
+      nodes: z
+        .array(
+          z.object({
+            author: z
+              .object({
+                login: z.string().optional(),
+                avatarUrl: z.string().nullable().optional(),
+              })
+              .nullable()
+              .optional(),
+            state: z.string().optional(),
+          }),
+        )
+        .optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
   headRepositoryOwner: HeadRepositoryOwnerSchema,
   mergeStateStatus: z.string().nullable().optional().catch(null),
   autoMergeRequest: GitHubAutoMergeRequestSchema,
@@ -766,6 +870,30 @@ fragment PaseoPollPullRequest on PullRequest {
   mergedAt
   mergeable
   reviewDecision
+  reviewRequests(first: 50) {
+    nodes {
+      requestedReviewer {
+        __typename
+        ... on User {
+          login
+          avatarUrl
+        }
+        ... on Team {
+          name
+          slug
+        }
+      }
+    }
+  }
+  latestReviews(first: 50) {
+    nodes {
+      author {
+        login
+        avatarUrl
+      }
+      state
+    }
+  }
   headRepositoryOwner {
     login
   }
@@ -2588,6 +2716,50 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       return parsed.html_url ? { url: parsed.html_url } : {};
     },
 
+    async setThreadResolved(input) {
+      const mutation = input.resolved
+        ? RESOLVE_REVIEW_THREAD_MUTATION
+        : UNRESOLVE_REVIEW_THREAD_MUTATION;
+      const parsed = await runGhJson(
+        ["api", "graphql", "-f", `query=${mutation}`, "-f", `threadId=${input.threadId}`],
+        { cwd: input.cwd },
+        SetReviewThreadResolvedGraphqlSchema,
+        "{}",
+      );
+      const thread = input.resolved
+        ? parsed.data?.resolveReviewThread?.thread
+        : parsed.data?.unresolveReviewThread?.thread;
+      return { resolved: thread?.isResolved ?? input.resolved };
+    },
+
+    async requestReview(input) {
+      let slug = await resolveGitHubSlugFromOrigin(input.cwd);
+      if (!slug) {
+        const repoView = await getGitHubRepoView({ cwd: input.cwd, run });
+        slug =
+          repoView?.owner?.login && repoView.name
+            ? `${repoView.owner.login}/${repoView.name}`
+            : null;
+      }
+      if (!slug) {
+        throw new Error("Unable to resolve GitHub repository for review request");
+      }
+      await runGhJson(
+        [
+          "api",
+          "-X",
+          "POST",
+          `repos/${slug}/pulls/${input.prNumber}/requested_reviewers`,
+          "-f",
+          `reviewers[]=${input.reviewerLogin}`,
+        ],
+        { cwd: input.cwd },
+        z.unknown(),
+        "{}",
+      );
+      return { ok: true };
+    },
+
     async mergePullRequest(input) {
       assertDirectPullRequestMergeReady(input);
       await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
@@ -3421,6 +3593,22 @@ function toBatchCurrentPullRequestItem(
     mergedAt: node.mergedAt ?? null,
     ...(statusCheckRollup ? { statusCheckRollup } : {}),
     reviewDecision: node.reviewDecision,
+    latestReviews: (node.latestReviews?.nodes ?? []).map((review) => ({
+      author: review.author
+        ? {
+            ...(review.author.login !== undefined ? { login: review.author.login } : {}),
+            avatarUrl: review.author.avatarUrl ?? null,
+          }
+        : null,
+      state: review.state,
+    })),
+    reviewRequests: (node.reviewRequests?.nodes ?? []).map((request) => ({
+      __typename: request.requestedReviewer?.__typename,
+      login: request.requestedReviewer?.login,
+      avatarUrl: request.requestedReviewer?.avatarUrl ?? null,
+      name: request.requestedReviewer?.name,
+      slug: request.requestedReviewer?.slug,
+    })),
     mergeable: node.mergeable,
     headRepositoryOwner: node.headRepositoryOwner,
   };
@@ -4055,6 +4243,7 @@ function toCurrentPullRequestStatus(
     checks,
     checksStatus: computeChecksStatus(checks),
     reviewDecision: mapReviewDecision(item.reviewDecision),
+    reviewers: buildPullRequestReviewers(item.latestReviews, item.reviewRequests),
   };
 }
 
@@ -4258,6 +4447,63 @@ function formatDurationSeconds(totalSeconds: number): string {
 
 function getStatusContextRecency(context: PullRequestStatusContextNode): number {
   return parseOptionalTime(context.createdAt ?? null);
+}
+
+// A single submitted review's state → the reviewer's standing, or null when the
+// review carries no current verdict (DISMISSED/PENDING/unknown).
+function mapReviewerVerdict(state: string | undefined): PullRequestReviewerState | null {
+  switch ((state ?? "").toUpperCase()) {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes_requested";
+    case "COMMENTED":
+      return "commented";
+    default:
+      return null;
+  }
+}
+
+// Build the reviewer roster from the PR's latest per-person reviews and its
+// currently-requested reviewers. A requested reviewer is "pending" (awaiting);
+// re-requesting dismisses any prior verdict, so pending overrides it. Teams keep
+// their name as the display login.
+function buildPullRequestReviewers(
+  latestReviews: CurrentPullRequestStatusItem["latestReviews"],
+  reviewRequests: CurrentPullRequestStatusItem["reviewRequests"],
+): PullRequestReviewer[] {
+  const byLogin = new Map<string, PullRequestReviewer>();
+  for (const review of latestReviews ?? []) {
+    const login = review.author?.login;
+    if (!login) {
+      continue;
+    }
+    const state = mapReviewerVerdict(review.state);
+    if (!state) {
+      continue;
+    }
+    byLogin.set(login, {
+      login,
+      ...(review.author?.avatarUrl ? { avatarUrl: review.author.avatarUrl } : {}),
+      state,
+    });
+  }
+  const teams: PullRequestReviewer[] = [];
+  for (const request of reviewRequests ?? []) {
+    if (request.login) {
+      byLogin.set(request.login, {
+        login: request.login,
+        ...(request.avatarUrl ? { avatarUrl: request.avatarUrl } : {}),
+        state: "pending",
+      });
+      continue;
+    }
+    const teamName = request.name ?? request.slug;
+    if (teamName) {
+      teams.push({ login: teamName, state: "pending", isTeam: true });
+    }
+  }
+  return [...byLogin.values(), ...teams];
 }
 
 function mapReviewDecision(value: unknown): PullRequestReviewDecision {

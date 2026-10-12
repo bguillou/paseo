@@ -5,9 +5,10 @@ import type {
   SessionEventSubscription,
   UsageReportEntry,
   ProviderUsage,
+  AgentPlanEntry,
 } from "@getpaseo/protocol/messages";
 import { relative } from "node:path";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { CreationService } from "./creation/index.js";
 import type { CreationSnapshot, AgentCreateRequest } from "@getpaseo/protocol/messages";
 import type { MessageReceipts } from "./message-receipts/index.js";
@@ -126,7 +127,11 @@ import {
 } from "./agent/timeline-append.js";
 import { assertPluginTimelineDataSize } from "./agent/agent-timeline-content.js";
 import { parsePluginClientId } from "./plugins/plugin-session-identity.js";
-import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
+import {
+  buildAgentForkContextAttachment,
+  buildAgentPlanContextAttachment,
+  extractAgentPlans,
+} from "./agent/activity-curator.js";
 import { buildAgentPrompt } from "./agent/prompt-attachments.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
@@ -258,6 +263,8 @@ import {
   handleWorkspaceSetupRunRequest as handleWorkspaceSetupRunRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
+import { GlobalProjectConfigStore } from "./project-config/global-project-config-store.js";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import { SessionAuthorization, type DaemonPermission } from "./authorization/index.js";
 
@@ -463,6 +470,7 @@ export interface SessionOptions {
   creationService: Pick<CreationService, "create" | "subscribe">;
   projectRegistry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
+  resolveEffectiveProjectConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   directorySync?: DirectorySyncService;
   workspaceLabelService?: WorkspaceLabelService;
   filesystem?: SessionFileSystem;
@@ -724,6 +732,9 @@ export class Session {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly resolveEffectiveProjectConfig:
+    | ((cwd: string) => Promise<PaseoConfig | null>)
+    | undefined;
   private readonly directorySync: DirectorySyncService;
   private readonly filesystem: SessionFileSystem;
   private readonly github: ForgeService;
@@ -822,6 +833,7 @@ export class Session {
       agentStorage,
       projectRegistry,
       workspaceRegistry,
+      resolveEffectiveProjectConfig,
       directorySync,
       workspaceLabelService,
       filesystem,
@@ -896,6 +908,7 @@ export class Session {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
+    this.resolveEffectiveProjectConfig = resolveEffectiveProjectConfig;
     this.directorySync = resolveDirectorySync(directorySync);
     this.workspaceLabelService = resolveWorkspaceLabelService(workspaceLabelService);
     this.filesystem = filesystem ?? nodeSessionFileSystem;
@@ -1029,6 +1042,12 @@ export class Session {
         emit: (msg) => this.emit(msg),
       },
       projectRegistry: this.projectRegistry,
+      // The editor store is stateless file I/O over the same dir the daemon's
+      // resolver uses, so building it here keeps the Session constructor free of
+      // extra injected dependencies.
+      globalConfigStore: new GlobalProjectConfigStore({
+        configDir: join(paseoHome, "projects", "configs"),
+      }),
       logger: this.sessionLogger,
     });
     this.daemonSession = new DaemonSession({
@@ -1149,6 +1168,7 @@ export class Session {
       getDaemonTcpHost: this.getDaemonTcpHost,
       serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
       resolveScriptHealth: this.resolveScriptHealth,
+      resolveEffectiveConfig: this.resolveEffectiveProjectConfig,
       logger: this.sessionLogger,
       emit: (message) => this.emit(message),
       publishStatusUpdate: (message) => {
@@ -2680,6 +2700,8 @@ export class Session {
       }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.plans.list.request":
+        return this.handleAgentPlansListRequest(msg);
       default:
         return undefined;
     }
@@ -2759,6 +2781,7 @@ export class Session {
     }
   }
 
+  // eslint-disable-next-line complexity
   private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "set_agent_mode_request":
@@ -2806,6 +2829,10 @@ export class Session {
         return this.projectConfigSession.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":
         return this.projectConfigSession.handleWriteProjectConfigRequest(msg);
+      case "project.config.migrateToGlobal.request":
+        return this.projectConfigSession.handleMigrateProjectConfigToGlobalRequest(msg);
+      case "project.config.deleteProjectFile.request":
+        return this.projectConfigSession.handleDeleteProjectConfigFileRequest(msg);
       default:
         return undefined;
     }
@@ -2861,6 +2888,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutForgeSetAutoMergeRequest(msg);
       case "checkout.forge.reply_comment.request":
         return this.checkoutSession.handleCheckoutForgeReplyCommentRequest(msg);
+      case "checkout.forge.resolve_thread.request":
+        return this.checkoutSession.handleCheckoutForgeResolveThreadRequest(msg);
+      case "checkout.forge.request_review.request":
+        return this.checkoutSession.handleCheckoutForgeRequestReviewRequest(msg);
       case "checkout.forge.get_check_details.request":
       case "checkout.github.get_check_details.request":
         return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);
@@ -5128,6 +5159,7 @@ export class Session {
         agentStorage: this.agentStorage,
         findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
         listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+        resolveEffectiveConfig: this.resolveEffectiveProjectConfig ?? undefined,
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
         emit: (message) => this.emit(message),
         emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
@@ -5534,6 +5566,10 @@ export class Session {
         ? basename(workspace.worktreeRoot)
         : undefined;
 
+    // Resolve the effective config so the descriptor's script list reflects a
+    // project configured only at the user/global layer.
+    const paseoConfig = await this.resolveDescriptorEffectiveConfig(workspace.cwd);
+
     return {
       id: workspace.workspaceId,
       projectId: workspace.projectId,
@@ -5556,7 +5592,11 @@ export class Session {
       statusEnteredAt: null,
       activityAt: null,
       diffStat,
-      scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
+      scripts: this.buildWorkspaceScriptPayloadSnapshot(
+        workspace,
+        resolvedProjectRecord,
+        paseoConfig,
+      ),
       ...(resolvedProjectRecord
         ? {
             project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
@@ -7092,11 +7132,31 @@ export class Session {
 
   // Named accessor: the workspace descriptor builder and the git-watch test both read a workspace's
   // scripts snapshot through here; the workspace-scripts module owns the payload assembly.
+  // `paseoConfig` is the resolved effective config (project file winning over the user/global
+  // layer); omitting it falls back to reading the committed paseo.json, which would hide scripts
+  // that only exist in a project's global config.
   private buildWorkspaceScriptPayloadSnapshot(
     workspace: PersistedWorkspaceRecord,
     project: PersistedProjectRecord | null,
+    paseoConfig?: PaseoConfig | null,
   ): WorkspaceDescriptorPayload["scripts"] {
-    return this.workspaceScripts.buildSnapshot(workspace, project);
+    return this.workspaceScripts.buildSnapshot(workspace, project, paseoConfig);
+  }
+
+  // Effective config (project file winning over the user/global layer) for a
+  // descriptor's script list. Returns undefined when unresolvable so the caller
+  // falls back to reading the committed paseo.json.
+  private async resolveDescriptorEffectiveConfig(
+    cwd: string,
+  ): Promise<PaseoConfig | null | undefined> {
+    if (!this.resolveEffectiveProjectConfig) {
+      return undefined;
+    }
+    try {
+      return await this.resolveEffectiveProjectConfig(cwd);
+    } catch {
+      return undefined;
+    }
   }
 
   private handleStartWorkspaceScriptRequest(request: StartWorkspaceScriptRequest): Promise<void> {
@@ -7265,6 +7325,7 @@ export class Session {
         getDaemonTcpPort: this.getDaemonTcpPort,
         getDaemonTcpHost: this.getDaemonTcpHost,
         serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
+        resolveEffectiveConfig: this.resolveEffectiveProjectConfig ?? undefined,
         onScriptsChanged: (workspaceId, workspaceDirectory) => {
           this.workspaceScripts.emitStatusUpdate(workspaceId, workspaceDirectory);
         },
@@ -7311,6 +7372,7 @@ export class Session {
         getDaemonTcpPort: this.getDaemonTcpPort,
         getDaemonTcpHost: this.getDaemonTcpHost,
         serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
+        resolveEffectiveConfig: this.resolveEffectiveProjectConfig ?? undefined,
         onScriptsChanged: (workspaceId, workspaceDirectory) =>
           this.workspaceScripts.emitStatusUpdate(workspaceId, workspaceDirectory),
       },
@@ -7338,6 +7400,7 @@ export class Session {
           findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
           getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
           listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+          resolveEffectiveConfig: this.resolveEffectiveProjectConfig ?? undefined,
           archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
           emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
             this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds),
@@ -8038,6 +8101,69 @@ export class Session {
           itemCount: 0,
           boundaryCursor: msg.boundaryCursor ?? null,
           boundaryMessageId: msg.boundaryMessageId ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleAgentPlansListRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.plans.list.request" }>,
+  ): Promise<void> {
+    try {
+      const workspaceId =
+        msg.workspaceId ?? (msg.cwd ? await this.findWorkspaceIdForCwd(msg.cwd) : null);
+      if (!workspaceId) {
+        this.emit({
+          type: "agent.plans.list.response",
+          payload: { requestId: msg.requestId, plans: [], error: null },
+        });
+        return;
+      }
+
+      const records = await this.agentStorage.listByWorkspace(workspaceId);
+      const plans: AgentPlanEntry[] = [];
+      for (const record of records) {
+        let rows;
+        try {
+          rows = await this.agentManager.readPersistedTimelineRows(record.id);
+        } catch (error) {
+          this.sessionLogger.warn(
+            { err: error, agentId: record.id },
+            "Failed to read timeline rows for plan listing",
+          );
+          continue;
+        }
+        for (const plan of extractAgentPlans(rows)) {
+          plans.push({
+            agentId: record.id,
+            agentTitle: record.title ?? null,
+            cwd: record.cwd ?? null,
+            planKey: plan.planKey,
+            createdAt: plan.createdAt,
+            outcome: plan.outcome,
+            summary: plan.summary,
+            attachment: buildAgentPlanContextAttachment({
+              text: plan.text,
+              agentTitle: record.title,
+              cwd: record.cwd,
+            }),
+          });
+        }
+      }
+      plans.sort((a, b) => b.createdAt - a.createdAt);
+
+      this.emit({
+        type: "agent.plans.list.response",
+        payload: { requestId: msg.requestId, plans, error: null },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "Failed to handle agent.plans.list.request");
+      this.emit({
+        type: "agent.plans.list.response",
+        payload: {
+          requestId: msg.requestId,
+          plans: [],
           error: error instanceof Error ? error.message : String(error),
         },
       });

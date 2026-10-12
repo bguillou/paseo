@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   AgentForkContextRequestMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentPlansListRequestMessageSchema,
+  AgentPlansListResponseMessageSchema,
   CreateAgentRequestMessageSchema,
   CreatePaseoWorktreeRequestSchema,
   SendAgentMessageRequestSchema,
@@ -286,6 +288,13 @@ describe("shared messages attachments", () => {
         {
           type: "text",
           mimeType: "text/plain",
+          contextKind: "plan",
+          title: "Plan",
+          text: "<plan>Do the thing</plan>",
+        },
+        {
+          type: "text",
+          mimeType: "text/plain",
           contextKind: "future_context",
           title: "Future context",
           text: "Future client hint",
@@ -304,10 +313,66 @@ describe("shared messages attachments", () => {
       {
         type: "text",
         mimeType: "text/plain",
+        contextKind: "plan",
+        title: "Plan",
+        text: "<plan>Do the thing</plan>",
+      },
+      {
+        type: "text",
+        mimeType: "text/plain",
         title: "Future context",
         text: "Future client hint",
       },
     ]);
+  });
+
+  it("parses agent plan-list request and response messages", () => {
+    const request = AgentPlansListRequestMessageSchema.parse({
+      type: "agent.plans.list.request",
+      workspaceId: "ws-1",
+      requestId: "plans-1",
+    });
+    expect(request.workspaceId).toBe("ws-1");
+    expect(request.cwd).toBeUndefined();
+
+    const response = AgentPlansListResponseMessageSchema.parse({
+      type: "agent.plans.list.response",
+      payload: {
+        requestId: "plans-1",
+        plans: [
+          {
+            agentId: "agent-1",
+            agentTitle: "Fix the parser",
+            cwd: "/tmp/repo",
+            planKey: "call-7",
+            createdAt: 1700000000000,
+            outcome: "approved",
+            summary: "Rewrite the tokenizer",
+            attachment: {
+              type: "text",
+              mimeType: "text/plain",
+              contextKind: "plan",
+              title: "Plan",
+              text: "<plan>Rewrite the tokenizer</plan>",
+            },
+          },
+        ],
+        error: null,
+      },
+    });
+    expect(response.payload.plans).toHaveLength(1);
+    expect(response.payload.plans[0]?.outcome).toBe("approved");
+    expect(response.payload.plans[0]?.attachment.contextKind).toBe("plan");
+  });
+
+  it("accepts a cwd-scoped plan-list request without a workspace id", () => {
+    const request = AgentPlansListRequestMessageSchema.parse({
+      type: "agent.plans.list.request",
+      cwd: "/tmp/repo",
+      requestId: "plans-2",
+    });
+    expect(request.cwd).toBe("/tmp/repo");
+    expect(request.workspaceId).toBeUndefined();
   });
 
   it("preserves neutral external-resource presentation on text attachments", () => {

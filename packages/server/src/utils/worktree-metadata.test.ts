@@ -3,8 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  readBaseRefOverride,
   readPaseoWorktreeMetadata,
+  storedBaseRefFromOverride,
   updatePaseoWorktreeBaseRef,
+  writeBaseRefOverride,
   writePaseoWorktreeMetadata,
 } from "./worktree-metadata.js";
 
@@ -53,5 +56,34 @@ describe("updatePaseoWorktreeBaseRef", () => {
         baseRef: "refs/remotes/origin/develop",
       }),
     ).toThrow(/missing base metadata/i);
+  });
+});
+
+describe("base ref override", () => {
+  let worktreeRoot: string;
+
+  beforeEach(() => {
+    worktreeRoot = mkdtempSync(join(tmpdir(), "paseo-base-ref-override-"));
+    mkdirSync(join(worktreeRoot, ".git"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(worktreeRoot, { recursive: true, force: true });
+  });
+
+  it("returns null before any override is written", () => {
+    expect(readBaseRefOverride(worktreeRoot)).toBeNull();
+  });
+
+  it("persists and reads back a base ref override for a non-Paseo checkout", () => {
+    const written = writeBaseRefOverride(worktreeRoot, {
+      baseRefName: "develop",
+      baseRef: "refs/remotes/origin/develop",
+    });
+    expect(written.baseRefName).toBe("develop");
+
+    const reread = readBaseRefOverride(worktreeRoot);
+    expect(reread?.baseRef).toBe("refs/remotes/origin/develop");
+    expect(storedBaseRefFromOverride(reread)).toBe("refs/remotes/origin/develop");
   });
 });

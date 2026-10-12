@@ -1,6 +1,7 @@
 import { readPaseoConfigJson } from "./paseo-config-file.js";
 import {
   PaseoConfigSchema,
+  type PaseoConfig,
   type PaseoMetadataGeneration,
 } from "@getpaseo/protocol/paseo-config-schema";
 
@@ -28,6 +29,10 @@ export interface BuildMetadataPromptOptions {
   after: string;
   trailing?: string;
   workspaceGitService?: RepoRootResolver;
+  // Resolves the effective config (project file winning over the user/global
+  // layer) for a repo root. When absent, falls back to reading the committed
+  // paseo.json directly.
+  resolveEffectiveConfig?: (cwd: string) => Promise<PaseoConfig | null>;
 }
 
 export async function buildMetadataPrompt(options: BuildMetadataPromptOptions): Promise<string> {
@@ -45,13 +50,20 @@ function renderStyleSection(section: MetadataStyleSection, override: string | un
 }
 
 async function readProjectMetadataOverrides(
-  options: Pick<BuildMetadataPromptOptions, "cwd" | "workspaceGitService">,
+  options: Pick<
+    BuildMetadataPromptOptions,
+    "cwd" | "workspaceGitService" | "resolveEffectiveConfig"
+  >,
 ): Promise<PaseoMetadataGeneration | undefined> {
   if (!options.workspaceGitService) {
     return undefined;
   }
   try {
     const repoRoot = await options.workspaceGitService.resolveRepoRoot(options.cwd);
+    if (options.resolveEffectiveConfig) {
+      const effective = await options.resolveEffectiveConfig(repoRoot);
+      return effective?.metadataGeneration;
+    }
     const json = readPaseoConfigJson(repoRoot);
     return PaseoConfigSchema.parse(json).metadataGeneration;
   } catch {

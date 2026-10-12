@@ -111,6 +111,17 @@ export type ForgeAuthState =
  */
 export type ForgeSpecificStatusFacts = { forge: string } & Record<string, unknown>;
 
+/** A reviewer's current standing on a pull request, for the PR panel roster. */
+export type PullRequestReviewerState = "approved" | "changes_requested" | "commented" | "pending";
+
+export interface PullRequestReviewer {
+  login: string;
+  avatarUrl?: string | null;
+  state: PullRequestReviewerState;
+  /** True when the requested reviewer is a team rather than a user. */
+  isTeam?: boolean;
+}
+
 export interface CurrentPullRequestStatus {
   number?: number;
   repoOwner?: string;
@@ -132,6 +143,8 @@ export interface CurrentPullRequestStatus {
   checks: PullRequestCheck[];
   checksStatus: PullRequestChecksStatus;
   reviewDecision: PullRequestReviewDecision;
+  /** Per-reviewer roster (requested reviewers + latest verdict). */
+  reviewers?: PullRequestReviewer[];
   forgeSpecific?: ForgeSpecificStatusFacts;
 }
 
@@ -249,6 +262,41 @@ export interface ReplyToCommentOptions {
 export interface ReplyToCommentResult {
   /** URL of the posted reply when the forge returns one. */
   url?: string;
+}
+
+/**
+ * Forge-neutral resolve target. GitHub and GitLab resolve a review thread /
+ * discussion by its opaque `threadId` from the timeline. `resolved` selects the
+ * direction: true resolves, false reopens.
+ */
+export interface SetThreadResolvedOptions {
+  cwd: string;
+  prNumber: number;
+  threadId: string;
+  resolved: boolean;
+  repoOwner?: string;
+  repoName?: string;
+}
+
+export interface SetThreadResolvedResult {
+  /** The thread's resolved state after the mutation. */
+  resolved: boolean;
+}
+
+/**
+ * Forge-neutral re-request-review target. The reviewer is already on the PR;
+ * GitHub re-requests by login.
+ */
+export interface RequestReviewOptions {
+  cwd: string;
+  prNumber: number;
+  reviewerLogin: string;
+  repoOwner?: string;
+  repoName?: string;
+}
+
+export interface RequestReviewResult {
+  ok: boolean;
 }
 
 export type ForgeReadOptions =
@@ -510,6 +558,20 @@ export interface ForgeService {
    * server_info.features.checkoutForgeReplyComment.
    */
   replyToComment?(options: ReplyToCommentOptions): Promise<ReplyToCommentResult>;
+  /**
+   * Resolve or reopen a pull-request review thread. Optional: an adapter that
+   * cannot resolve threads (or a forge with no stable thread id, e.g. Gitea)
+   * omits it, and the session handler reports the operation as unsupported.
+   * Gated to clients via server_info.features.checkoutForgeResolveThread.
+   */
+  setThreadResolved?(options: SetThreadResolvedOptions): Promise<SetThreadResolvedResult>;
+  /**
+   * Re-request a review from a reviewer already on the pull request. Optional: an
+   * adapter that cannot request reviews omits it, and the session handler reports
+   * the operation as unsupported. Gated to clients via
+   * server_info.features.checkoutForgeRequestReview.
+   */
+  requestReview?(options: RequestReviewOptions): Promise<RequestReviewResult>;
   enablePullRequestAutoMerge(
     options: EnablePullRequestAutoMergeOptions,
   ): Promise<PullRequestAutoMergeResult>;

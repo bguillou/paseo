@@ -1,85 +1,46 @@
 import { useCallback, useMemo, useState } from "react";
-import { buildReviewableDiffTargetKey } from "@/utils/diff-layout";
+import {
+  buildWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
 import type { PrInlineActions, PrInlineThreadData } from "@/git/diff-document/pr-inline";
 import { usePrPaneData } from "./use-data";
-import { buildPrTimeline, type PrThreadEntry, type PrTimelineEntry } from "./timeline";
-import type { PrPaneData } from "./data";
+import { buildInlineReviewData } from "./inline-review-data";
+import { buildPullRequestThreadContextAttachment } from "./context-attachment";
 import { useReplyToPrComment } from "./use-reply-to-comment";
-
-function collectThreadEntries(entries: readonly PrTimelineEntry[]): PrThreadEntry[] {
-  return entries.flatMap((entry) => {
-    if (entry.kind === "thread") {
-      return [entry];
-    }
-    if (entry.kind === "review") {
-      return entry.threads;
-    }
-    return [];
-  });
-}
-
-/**
- * Maps the PR timeline to diff-anchored threads, keyed by `${path}:new:${line}` to
- * line up with ReviewableDiffTarget. Threads without a file line, and outdated ones
- * (whose line no longer matches the diff), are dropped — they stay in the list.
- */
-export function buildThreadsByTarget(data: PrPaneData | null): Map<string, PrInlineThreadData[]> {
-  const byTarget = new Map<string, PrInlineThreadData[]>();
-  if (!data) {
-    return byTarget;
-  }
-  const threads = collectThreadEntries(buildPrTimeline(data.activity));
-  for (const thread of threads) {
-    const location = thread.location;
-    if (!location || location.line === undefined || location.isOutdated) {
-      continue;
-    }
-    const targetKey = buildReviewableDiffTargetKey({
-      filePath: location.path,
-      side: "new",
-      lineNumber: location.line,
-    });
-    const root = thread.comments[0];
-    const threadId = root?.location?.threadId ?? root?.threadId;
-    const inlineThread: PrInlineThreadData = {
-      key: `${targetKey}#${threadId ?? thread.id}`,
-      ...(threadId ? { threadId } : {}),
-      isResolved: thread.isResolved ?? false,
-      isOutdated: location.isOutdated ?? false,
-      location: { path: location.path, line: location.line },
-      comments: thread.comments.map((comment) => ({
-        id: comment.id,
-        author: comment.author,
-        avatarColor: comment.avatarColor,
-        avatarUrl: comment.avatarUrl,
-        body: comment.body,
-        age: comment.age,
-      })),
-    };
-    byTarget.set(targetKey, [...(byTarget.get(targetKey) ?? []), inlineThread]);
-  }
-  return byTarget;
-}
+import { useResolvePrThread } from "./use-resolve-thread";
+import { usePrShowResolved } from "./pr-review-view-store";
 
 /**
  * Builds the inline PR-thread overlay actions for the diff. Returns undefined when
  * the daemon can't post replies or when disabled (non-base diff), so the diff never
- * shows a reply affordance it can't fulfil.
+ * shows a reply affordance it can't fulfil. Resolve ships with reply (same daemon
+ * version), so both affordances gate together.
  */
 export function usePrInlineReview({
   serverId,
+  workspaceId,
   cwd,
   enabled,
 }: {
   serverId: string;
+  workspaceId?: string | null;
   cwd: string;
   enabled: boolean;
 }): PrInlineActions | undefined {
   const { data } = usePrPaneData({ serverId, cwd, enabled, timelineEnabled: enabled });
   const replyController = useReplyToPrComment({ serverId, cwd });
+  const resolveController = useResolvePrThread({ serverId, cwd });
+  const showResolved = usePrShowResolved(serverId, cwd);
+  const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
+    (state) => state.addWorkspaceAttachment,
+  );
   const [openComposerKeys, setOpenComposerKeys] = useState<ReadonlySet<string>>(() => new Set());
 
-  const threadsByTarget = useMemo(() => buildThreadsByTarget(data), [data]);
+  const { threadsByTarget, commentCountByPath, threadsByKey } = useMemo(
+    () => buildInlineReviewData(data, showResolved),
+    [data, showResolved],
+  );
 
   const onToggleComposer = useCallback((threadKey: string, open: boolean) => {
     setOpenComposerKeys((previous) => {
@@ -115,17 +76,74 @@ export function usePrInlineReview({
     [prNumber, repoName, repoOwner, replyController],
   );
 
+  const scopeKey = useMemo(
+    () => buildWorkspaceAttachmentScopeKey({ serverId, workspaceId, cwd }),
+    [serverId, workspaceId, cwd],
+  );
+  const onAddThreadToChat = useCallback(
+    (threadKey: string) => {
+      const thread = threadsByKey.get(threadKey);
+      if (!data || !thread) {
+        return;
+      }
+      const attachment = buildPullRequestThreadContextAttachment({
+        provider: data.provider,
+        forge: data.forge,
+        pullRequest: { number: data.number, title: data.title, url: data.url },
+        thread,
+      });
+      if (attachment) {
+        addWorkspaceAttachment({ scopeKey, attachment });
+      }
+    },
+    [addWorkspaceAttachment, data, scopeKey, threadsByKey],
+  );
+
+  const onResolveThread = useCallback(
+    ({ threadKey, resolved }: { threadKey: string; resolved: boolean }) => {
+      const thread = threadsByKey.get(threadKey);
+      if (prNumber === null || !thread) {
+        return;
+      }
+      const root = thread.comments[0];
+      const threadId = root?.location?.threadId ?? root?.threadId;
+      if (!threadId) {
+        return;
+      }
+      void resolveController.setResolved({
+        prNumber,
+        threadId,
+        resolved,
+        ...(repoOwner ? { repoOwner } : {}),
+        ...(repoName ? { repoName } : {}),
+      });
+    },
+    [prNumber, repoName, repoOwner, resolveController, threadsByKey],
+  );
+
   return useMemo(() => {
     if (!enabled || !replyController.enabled) {
       return undefined;
     }
-    return { threadsByTarget, openComposerKeys, onToggleComposer, onReply };
+    return {
+      threadsByTarget,
+      commentCountByPath,
+      openComposerKeys,
+      onToggleComposer,
+      onReply,
+      onAddThreadToChat,
+      ...(resolveController.enabled ? { onResolveThread } : {}),
+    };
   }, [
+    commentCountByPath,
     enabled,
+    onAddThreadToChat,
     onReply,
+    onResolveThread,
     onToggleComposer,
     openComposerKeys,
     replyController.enabled,
+    resolveController.enabled,
     threadsByTarget,
   ]);
 }

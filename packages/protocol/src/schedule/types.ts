@@ -32,6 +32,10 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       thinkingOptionId: z.string().trim().min(1).optional(),
       archiveOnFinish: z.boolean().optional(),
       isolation: z.enum(["local", "worktree"]).optional(),
+      // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+      // When isolation is "worktree" and this is set, the run reuses the existing
+      // worktree workspace instead of creating a fresh one (and never archives it).
+      existingWorkspaceId: z.string().trim().min(1).optional(),
       title: z.string().trim().min(1).nullable().optional(),
       providerOptions: z.record(z.string(), z.unknown()).optional(),
       featureValues: z.record(z.string(), z.unknown()).optional(),
@@ -95,6 +99,9 @@ export interface UpdateScheduleNewAgentConfig {
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
   isolation?: "local" | "worktree";
+  // COMPAT(scheduleExistingWorktree): added in v0.11.0, remove after 2027-04-07.
+  // A string targets that existing worktree; null clears it (back to a fresh worktree).
+  existingWorkspaceId?: string | null;
   cwd?: string;
 }
 
