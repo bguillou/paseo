@@ -37,6 +37,11 @@ import {
   MergeConflictError,
   MergeFromBaseConflictError,
   NotGitRepoError,
+  getConflictState,
+  abortConflictOperation,
+  continueConflictOperation,
+  ConflictsRemainingError,
+  NoConflictOperationError,
   pullCurrentBranch,
   pushCurrentBranch,
   resolveBranchCheckout,
@@ -110,6 +115,25 @@ function initRepo(): { tempDir: string; repoDir: string } {
   execFileSync("git", ["add", "."], { cwd: repoDir });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], { cwd: repoDir });
   return { tempDir, repoDir };
+}
+
+// Leaves `repoDir` on branch `feature` mid-merge with file.txt conflicted.
+function createMergeConflict(repoDir: string): void {
+  const git = (args: string[]) =>
+    execFileSync("git", ["-c", "commit.gpgsign=false", ...args], { cwd: repoDir });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
+  git(["checkout", "-b", "feature"]);
+  writeFileSync(join(repoDir, "file.txt"), "feature change\n");
+  git(["commit", "-am", "feature"]);
+  git(["checkout", "main"]);
+  writeFileSync(join(repoDir, "file.txt"), "main change\n");
+  git(["commit", "-am", "mainline"]);
+  git(["checkout", "feature"]);
+  try {
+    git(["merge", "main"]);
+  } catch {
+    // Expected: the conflict stops the merge with a non-zero exit.
+  }
 }
 
 function readTextFile(path: string): string {
@@ -273,6 +297,65 @@ describe("checkout git utilities", () => {
     await expect(getCheckoutDiff(nonGitDir, { mode: "uncommitted" })).rejects.toBeInstanceOf(
       NotGitRepoError,
     );
+  });
+
+  describe("working-tree conflicts", () => {
+    it("reports conflict paths and the in-progress operation", async () => {
+      createMergeConflict(repoDir);
+
+      const conflict = await getConflictState(repoDir);
+      expect(conflict.operation).toBe("merge");
+      expect(conflict.paths).toContain("file.txt");
+
+      const status = await getCheckoutStatus(repoDir);
+      expect(status.isGit).toBe(true);
+      if (status.isGit) {
+        expect(status.conflictOperation).toBe("merge");
+        expect(status.conflictedPaths).toContain("file.txt");
+      }
+    });
+
+    it("reports no conflict on a clean checkout", async () => {
+      const conflict = await getConflictState(repoDir);
+      expect(conflict.operation).toBeNull();
+      expect(conflict.paths).toEqual([]);
+    });
+
+    it("aborts the in-progress merge and clears the conflict", async () => {
+      createMergeConflict(repoDir);
+
+      await abortConflictOperation(repoDir);
+
+      const conflict = await getConflictState(repoDir);
+      expect(conflict.operation).toBeNull();
+      expect(conflict.paths).toEqual([]);
+    });
+
+    it("refuses to continue while paths remain conflicted", async () => {
+      createMergeConflict(repoDir);
+
+      await expect(continueConflictOperation(repoDir)).rejects.toBeInstanceOf(
+        ConflictsRemainingError,
+      );
+    });
+
+    it("completes the merge once the conflicts are resolved", async () => {
+      createMergeConflict(repoDir);
+      writeFileSync(join(repoDir, "file.txt"), "resolved\n");
+      execFileSync("git", ["add", "file.txt"], { cwd: repoDir });
+
+      await continueConflictOperation(repoDir);
+
+      const conflict = await getConflictState(repoDir);
+      expect(conflict.operation).toBeNull();
+      expect(conflict.paths).toEqual([]);
+    });
+
+    it("throws when aborting with no operation in progress", async () => {
+      await expect(abortConflictOperation(repoDir)).rejects.toBeInstanceOf(
+        NoConflictOperationError,
+      );
+    });
   });
 
   it("creates a pull request via the given adapter without resolving a repo slug in the shell", async () => {

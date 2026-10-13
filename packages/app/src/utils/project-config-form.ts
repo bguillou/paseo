@@ -26,9 +26,30 @@ export interface ProjectConfigDraft {
   setupOriginalKind: LifecycleOriginalKind;
   teardownText: string;
   teardownOriginalKind: LifecycleOriginalKind;
+  portBaseText: string;
   scripts: ProjectScriptDraft[];
   metadataPrompts: Record<MetadataPromptKey, string>;
   metadataGenerationBase: PaseoMetadataGeneration | undefined;
+}
+
+/**
+ * Validates the "Port start" draft field. Empty is allowed (clears the
+ * opt-in); otherwise it must be an integer TCP port in [1, 65535], matching
+ * `PaseoWorktreeConfigRawSchema.portBase`.
+ */
+export function portBaseDraftError(text: string): "invalid" | "range" | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (!/^[0-9]+$/.test(trimmed)) {
+    return "invalid";
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    return "range";
+  }
+  return null;
 }
 
 interface LifecycleProjection {
@@ -142,10 +163,23 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
     setupOriginalKind: setup.kind,
     teardownText: teardown.text,
     teardownOriginalKind: teardown.kind,
+    portBaseText: typeof worktree.portBase === "number" ? String(worktree.portBase) : "",
     scripts,
     metadataPrompts,
     metadataGenerationBase: metadataGeneration,
   };
+}
+
+// Keep the schema key `portBase`; the UI labels it "Port start". Drop it when
+// empty or invalid (Save is disabled on invalid input, so this never persists
+// a bad value).
+function applyPortBaseToWorktree(worktree: Record<string, unknown>, portBaseText: string): void {
+  const trimmed = portBaseText.trim();
+  if (trimmed.length > 0 && portBaseDraftError(trimmed) === null) {
+    worktree.portBase = Number(trimmed);
+  } else {
+    delete worktree.portBase;
+  }
 }
 
 interface ApplyDraftInput {
@@ -173,6 +207,8 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
   } else {
     nextWorktree.teardown = nextTeardown;
   }
+
+  applyPortBaseToWorktree(nextWorktree, input.draft.portBaseText);
 
   const nextScripts: Record<string, PaseoScriptEntryRaw> = {};
   for (const row of input.draft.scripts) {

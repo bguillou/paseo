@@ -69,6 +69,16 @@ describe("workspace terminal state", () => {
     ).toEqual(["terminal-2"]);
   });
 
+  it("excludes pane-owned terminals from the standalone (dock) list", () => {
+    expect(
+      collectStandaloneTerminalIds({
+        terminals: [listedTerminal("dock-1"), listedTerminal("pane-1"), listedTerminal("dock-2")],
+        scriptTerminalIds: new Set(),
+        excludedTerminalIds: new Set(["pane-1"]),
+      }),
+    ).toEqual(["dock-1", "dock-2"]);
+  });
+
   it("updates terminal cache entries for created and closed terminals", () => {
     const current: ListTerminalsPayload = {
       cwd: "/repo",

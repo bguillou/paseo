@@ -861,6 +861,18 @@ export const fr: TranslationResources = {
           pending: "Mise à jour…",
           success: "Mis à jour",
         },
+        abortConflict: {
+          label: "Abandonner",
+          pending: "Abandon...",
+          success: "Abandonné",
+          failed: "Échec de l’abandon",
+        },
+        continueConflict: {
+          label: "Continuer",
+          pending: "Poursuite...",
+          success: "Poursuivi",
+          failed: "Échec de la poursuite",
+        },
         archive: {
           label: "Archiver l’espace de travail",
           pending: "Archivage…",
@@ -969,6 +981,27 @@ export const fr: TranslationResources = {
           unpushedCommits: "{{count}} commits non poussés",
         },
       },
+      status: {
+        noPrOpen: "Aucune pull request ouverte",
+        prOpen: "Pull request #{{number}} ouverte",
+        uncommittedChanges_one: "{{count}} modification non validée",
+        uncommittedChanges_other: "{{count}} modifications non validées",
+        behindBase_one: "{{count}} commit de retard sur {{baseRef}}",
+        behindBase_other: "{{count}} commits de retard sur {{baseRef}}",
+        behindRemote_one: "{{count}} commit de retard sur {{remote}}",
+        behindRemote_other: "{{count}} commits de retard sur {{remote}}",
+        toPush_one: "{{count}} commit à pousser",
+        toPush_other: "{{count}} commits à pousser",
+        conflicts_one: "{{count}} fichier en conflit",
+        conflicts_other: "{{count}} fichiers en conflit",
+        upToDate: "Tout est à jour",
+        remote: "distant",
+        viewPr: "Voir",
+        askAgent: "Demander à l’agent",
+        askAgentNoChat: "Ouvrez un agent pour lui demander de résoudre les conflits",
+        askAgentPrompt:
+          "Il y a des conflits de fusion git dans cet espace de travail. Résolvez les conflits dans ces fichiers, puis indexez-les :\n{{files}}",
+      },
       diff: {
         openChangesTab: "Ouvrir l’onglet Modifications",
         openDiffTab: "Ouvrir l’onglet Diff",
@@ -1002,6 +1035,9 @@ export const fr: TranslationResources = {
         seeCommittedChanges: "Voir les modifications commitées",
         checkingRepository: "Vérification du dépôt…",
         notRepository: "Ce n’est pas un dépôt git",
+        expandUp: "Afficher les lignes au-dessus",
+        expandDown: "Afficher les lignes en dessous",
+        expandAll: "Afficher toutes les lignes masquées",
         diffMode: "Mode de diff",
         uncommitted: "Non commité",
         committed: "Commité",
@@ -1010,6 +1046,7 @@ export const fr: TranslationResources = {
         newFile: "Nouveau",
         deletedFile: "Supprimé",
         modifiedFile: "Modifié",
+        conflictedFile: "En conflit",
         commits: {
           title: "Commits",
           countLabel: "{{count}} commits de l’espace de travail",
@@ -1043,6 +1080,9 @@ export const fr: TranslationResources = {
           openInDiff: "Ouvrir dans le diff",
           showResolved: "Afficher les résolus",
           hideResolved: "Masquer les résolus",
+          rerun: "Relancer",
+          rerunCheck: "Relancer cette vérification",
+          rerunFailed: "Relancer les échecs",
         },
         checksOverview: {
           headline: {
@@ -1160,6 +1200,7 @@ export const fr: TranslationResources = {
           replyFailed: "Impossible de publier la réponse",
           resolveFailed: "Impossible de mettre à jour le fil",
           requestReviewFailed: "Impossible de demander une revue",
+          rerunChecksFailed: "Impossible de relancer la CI",
         },
       },
       forgeSetup: {
@@ -2064,6 +2105,10 @@ export const fr: TranslationResources = {
       emptyDescription:
         "Créez une pull request pour cette copie de travail afin d’en voir les détails ici.",
     },
+    gitStatus: {
+      label: "État Git",
+      subtitle: "État de la branche et conflits",
+    },
     diff: {
       changesLabel: "Modifications",
       diffLabel: "Diff",
@@ -2910,6 +2955,14 @@ export const fr: TranslationResources = {
           "Les nouveaux worktrees utilisent le script de configuration de la branche de base sélectionnée.",
         teardown: "Démontage",
         teardownAccessibility: "Commandes de démontage du worktree",
+        portStart: "Port de départ",
+        portStartInfo:
+          "Port TCP de base optionnel. Chaque worktree reçoit un port déterministe (port de départ + 10 × emplacement), exposé à ses commandes via $PASEO_WORKTREE_PORT. Laissez vide pour un port libre aléatoire.",
+        portStartAccessibility: "Port de départ du worktree",
+        portStartError: {
+          invalid: "Saisissez un nombre entier.",
+          range: "Le port doit être compris entre 1 et 65535.",
+        },
       },
       scripts: {
         title: "Scripts",

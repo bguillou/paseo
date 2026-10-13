@@ -850,6 +850,18 @@ export const en = {
           pending: "Updating...",
           success: "Updated",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "Archive workspace",
           pending: "Archiving...",
@@ -953,6 +965,27 @@ export const en = {
           unpushedCommits: "{{count}} unpushed commits",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "Open Changes tab",
         openDiffTab: "Open Diff tab",
@@ -986,6 +1019,9 @@ export const en = {
         seeCommittedChanges: "See committed changes",
         checkingRepository: "Checking repository...",
         notRepository: "Not a git repository",
+        expandUp: "Expand lines up",
+        expandDown: "Expand lines down",
+        expandAll: "Expand all hidden lines",
         diffMode: "Diff mode",
         uncommitted: "Uncommitted",
         committed: "Committed",
@@ -994,6 +1030,7 @@ export const en = {
         newFile: "New",
         deletedFile: "Deleted",
         modifiedFile: "Modified",
+        conflictedFile: "Conflicted",
         commits: {
           title: "Commits",
           countLabel: "{{count}} workspace commits",
@@ -1027,6 +1064,9 @@ export const en = {
           openInDiff: "Open in diff",
           showResolved: "Show resolved",
           hideResolved: "Hide resolved",
+          rerun: "Re-run",
+          rerunCheck: "Re-run this check",
+          rerunFailed: "Re-run failed",
         },
         checksOverview: {
           headline: {
@@ -1144,6 +1184,7 @@ export const en = {
           replyFailed: "Unable to post reply",
           resolveFailed: "Unable to update thread",
           requestReviewFailed: "Unable to request review",
+          rerunChecksFailed: "Unable to re-run CI",
         },
       },
       forgeSetup: {
@@ -2043,6 +2084,10 @@ export const en = {
       subtitle: "Pull request details",
       emptyTitle: "No pull request yet",
       emptyDescription: "Create a pull request for this checkout to see its details here.",
+    },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
     },
     diff: {
       changesLabel: "Changes",
@@ -2973,6 +3018,14 @@ export const en = {
           "New worktrees use the setup script from the base branch you select.",
         teardown: "Teardown",
         teardownAccessibility: "Worktree teardown commands",
+        portStart: "Port start",
+        portStartInfo:
+          "Opt-in base TCP port. Each worktree gets a deterministic port (port start + 10 × slot), exposed to its commands as $PASEO_WORKTREE_PORT. Leave empty for a random free port.",
+        portStartAccessibility: "Worktree port start",
+        portStartError: {
+          invalid: "Enter a whole number.",
+          range: "Port must be between 1 and 65535.",
+        },
       },
       scripts: {
         title: "Scripts",

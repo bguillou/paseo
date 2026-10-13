@@ -85,6 +85,7 @@ const BUILT_IN_SELECTIONS = {
   files: { kind: "target", target: { kind: "files" } },
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
+  gitStatus: { kind: "target", target: { kind: "git_status" } },
 } satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
 
 function getLaunchPresentation(kind: WorkspaceTabTarget["kind"]): PanelPresentation {
@@ -125,6 +126,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const diffPresentation = getLaunchPresentation("working_diff");
     const filesPresentation = getLaunchPresentation("files");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
+    const gitStatusPresentation = getLaunchPresentation("git_status");
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
         id: "agent",
@@ -191,6 +193,15 @@ export function useWorkspaceTabLaunchCatalog(input: {
         panelKind: "pull_request",
         hidden: !launcher.showPullRequest,
         launch: launchSelection(BUILT_IN_SELECTIONS.pullRequest),
+      },
+      gitStatus: {
+        id: "git-status",
+        label: gitStatusPresentation.label(t),
+        Icon: gitStatusPresentation.icon,
+        disabled: false,
+        panelKind: "git_status",
+        hidden: !launcher.showChanges,
+        launch: launchSelection(BUILT_IN_SELECTIONS.gitStatus),
       },
     };
     const tabItems = getBuiltInLaunchOrder(purpose).flatMap((id) => {

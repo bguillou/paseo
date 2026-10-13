@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { PaseoConfigRawSchema } from "@getpaseo/protocol/paseo-config-schema";
 import type { PaseoConfigRaw } from "@getpaseo/protocol/messages";
-import { applyDraftToConfig, configToDraft, type ProjectConfigDraft } from "./project-config-form";
+import {
+  applyDraftToConfig,
+  configToDraft,
+  portBaseDraftError,
+  type ProjectConfigDraft,
+} from "./project-config-form";
 
 function emptyDraft(): ProjectConfigDraft {
   return {
@@ -9,6 +14,7 @@ function emptyDraft(): ProjectConfigDraft {
     setupOriginalKind: "missing",
     teardownText: "",
     teardownOriginalKind: "missing",
+    portBaseText: "",
     scripts: [],
     metadataPrompts: {
       branchName: "",
@@ -367,6 +373,29 @@ describe("applyDraftToConfig", () => {
     expect(metadata.branchName).toEqual({ model: "haiku" });
   });
 
+  it("reads worktree.portBase into the draft as text and writes it back as a number", () => {
+    const base = PaseoConfigRawSchema.parse({ worktree: { portBase: 3000 } });
+    const draft = configToDraft(base);
+    expect(draft.portBaseText).toBe("3000");
+    const next = applyDraftToConfig({ draft, base });
+    expect(next.worktree?.portBase).toBe(3000);
+  });
+
+  it("omits worktree.portBase when the draft text is empty or invalid", () => {
+    const base = PaseoConfigRawSchema.parse({ worktree: { portBase: 3000 } });
+    const cleared = configToDraft(base);
+    cleared.portBaseText = "";
+    expect(applyDraftToConfig({ draft: cleared, base }).worktree?.portBase).toBeUndefined();
+
+    const invalid = configToDraft(base);
+    invalid.portBaseText = "abc";
+    expect(applyDraftToConfig({ draft: invalid, base }).worktree?.portBase).toBeUndefined();
+
+    const outOfRange = configToDraft(base);
+    outOfRange.portBaseText = "70000";
+    expect(applyDraftToConfig({ draft: outOfRange, base }).worktree?.portBase).toBeUndefined();
+  });
+
   it("drops scripts with an empty name and removes scripts no longer present in the draft", () => {
     const base = PaseoConfigRawSchema.parse({
       scripts: {
@@ -391,5 +420,27 @@ describe("applyDraftToConfig", () => {
     const next = applyDraftToConfig({ draft, base });
     const scripts = next.scripts ?? {};
     expect(Object.keys(scripts)).toEqual(["dev"]);
+  });
+});
+
+describe("portBaseDraftError", () => {
+  it("accepts empty and valid port numbers", () => {
+    expect(portBaseDraftError("")).toBeNull();
+    expect(portBaseDraftError("  ")).toBeNull();
+    expect(portBaseDraftError("1")).toBeNull();
+    expect(portBaseDraftError("3000")).toBeNull();
+    expect(portBaseDraftError("65535")).toBeNull();
+  });
+
+  it("rejects non-numeric input", () => {
+    expect(portBaseDraftError("abc")).toBe("invalid");
+    expect(portBaseDraftError("30a0")).toBe("invalid");
+    expect(portBaseDraftError("30.5")).toBe("invalid");
+  });
+
+  it("rejects out-of-range ports", () => {
+    expect(portBaseDraftError("0")).toBe("range");
+    expect(portBaseDraftError("65536")).toBe("range");
+    expect(portBaseDraftError("70000")).toBe("range");
   });
 });

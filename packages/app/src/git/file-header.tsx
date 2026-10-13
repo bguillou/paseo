@@ -1,12 +1,15 @@
 import { memo, type ReactElement, useCallback, useMemo, useState } from "react";
 import {
+  Pressable,
   Text,
   View,
   type GestureResponderEvent,
   type PressableStateCallbackType,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { MessageSquare } from "lucide-react-native";
+import { Check, MessageSquare } from "lucide-react-native";
 import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
 import { DiffStat } from "@/components/diff-stat";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
@@ -56,6 +59,11 @@ export interface FileHeaderProps {
   onHeaderHeightChange?: (path: string, height: number) => void;
   /** Number of visible PR review comments anchored to this file. */
   commentCount?: number;
+  /** "Viewed" state (GitHub-style). When set, renders a checkbox and dims the row. */
+  viewed?: boolean;
+  /** The file has unmerged (conflict) entries in the working tree. */
+  isConflicted?: boolean;
+  onToggleViewed?: (path: string) => void;
   testID?: string;
   canvasRendered?: boolean;
   onActiveChange?: (active: boolean) => void;
@@ -65,6 +73,45 @@ const foregroundMutedColorMapping = (theme: { colors: { foregroundMuted: string 
   color: theme.colors.foregroundMuted,
 });
 const ThemedMessageSquare = withUnistyles(MessageSquare);
+const ThemedCheck = withUnistyles(Check);
+
+function ViewedCheckbox({
+  path,
+  viewed,
+  onToggle,
+  testID,
+}: {
+  path: string;
+  viewed: boolean;
+  onToggle: (path: string) => void;
+  testID?: string;
+}) {
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      // Don't let the press bubble to the row (which selects/collapses).
+      event.stopPropagation();
+      onToggle(path);
+    },
+    [onToggle, path],
+  );
+  const accessibilityState = useMemo(() => ({ checked: viewed }), [viewed]);
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={6}
+      accessibilityRole="checkbox"
+      accessibilityState={accessibilityState}
+      style={[styles.viewedBox, viewed && styles.viewedBoxChecked]}
+      testID={testID ? `${testID}-viewed` : undefined}
+    >
+      {viewed ? <ThemedCheck size={11} uniProps={viewedCheckColorMapping} /> : null}
+    </Pressable>
+  );
+}
+
+const viewedCheckColorMapping = (theme: { colors: { primaryForeground: string } }) => ({
+  color: theme.colors.primaryForeground,
+});
 
 function FileCommentBadge({ count, testID }: { count?: number; testID?: string }) {
   if (!count || count <= 0) {
@@ -202,6 +249,78 @@ function FileHeaderMenu({
   );
 }
 
+function FileHeaderContent({
+  file,
+  showDir,
+  showsBodyState,
+  nameBaseStyle,
+  viewed,
+  isConflicted,
+  commentCount,
+  onToggleViewed,
+  dragSourceRef,
+  testID,
+}: {
+  file: ParsedDiffFile;
+  showDir: boolean;
+  showsBodyState: boolean;
+  nameBaseStyle: StyleProp<TextStyle>;
+  viewed: boolean;
+  isConflicted?: boolean;
+  commentCount?: number;
+  onToggleViewed?: (path: string) => void;
+  dragSourceRef: ReturnType<typeof useWorkspaceFileDragSource>;
+  testID?: string;
+}) {
+  const dimStyle = viewed ? styles.dimmed : null;
+  const fileName = fileNameForPath(file.path);
+  return (
+    <View
+      style={[styles.content, showsBodyState && styles.documentContent]}
+      testID={testID ? `${testID}-header-content` : undefined}
+    >
+      <View ref={dragSourceRef} style={showDir ? styles.left : [styles.left, styles.leftTree]}>
+        {showDir ? null : (
+          <View style={[styles.icon, dimStyle]}>
+            <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
+          </View>
+        )}
+        <Text
+          style={[nameBaseStyle, dimStyle]}
+          numberOfLines={1}
+          testID={testID ? `${testID}-name` : undefined}
+        >
+          {fileName}
+        </Text>
+        {showDir ? (
+          <Text style={[styles.directory, dimStyle]} numberOfLines={1}>
+            {directorySuffix(file.path)}
+          </Text>
+        ) : (
+          <View style={styles.directorySpacer} />
+        )}
+      </View>
+      <View style={styles.right}>
+        <FileCommentBadge count={commentCount} testID={testID} />
+        <DiffStat
+          additions={file.additions}
+          deletions={file.deletions}
+          testID={testID ? `${testID}-stat` : undefined}
+        />
+        <FileChangeIcon change={isConflicted ? "conflicted" : fileChange(file)} />
+        {onToggleViewed ? (
+          <ViewedCheckbox
+            path={file.path}
+            viewed={viewed}
+            onToggle={onToggleViewed}
+            testID={testID}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export const FileHeader = memo(function FileHeader({
   file,
   workspaceFileDragScope,
@@ -215,6 +334,9 @@ export const FileHeader = memo(function FileHeader({
   onSelect,
   onHeaderHeightChange,
   commentCount,
+  viewed = false,
+  isConflicted = false,
+  onToggleViewed,
   testID,
   canvasRendered = false,
   onActiveChange,
@@ -268,41 +390,20 @@ export const FileHeader = memo(function FileHeader({
     () => fileHeaderAccessibilityState({ showsBodyState, bodyVisible, isSelected }),
     [bodyVisible, isSelected, showsBodyState],
   );
-  const fileName = fileNameForPath(file.path);
-  const nameStyle = fileHeaderNameStyle(showsBodyState, hover.isHovered);
-  const changeIcon = <FileChangeIcon change={fileChange(file)} />;
+  const nameBaseStyle = fileHeaderNameStyle(showsBodyState, hover.isHovered);
   const content = (
-    <View
-      style={[styles.content, showsBodyState && styles.documentContent]}
-      testID={testID ? `${testID}-header-content` : undefined}
-    >
-      <View ref={dragSourceRef} style={showDir ? styles.left : [styles.left, styles.leftTree]}>
-        {showDir ? null : (
-          <View style={styles.icon}>
-            <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
-          </View>
-        )}
-        <Text style={nameStyle} numberOfLines={1} testID={testID ? `${testID}-name` : undefined}>
-          {fileName}
-        </Text>
-        {showDir ? (
-          <Text style={styles.directory} numberOfLines={1}>
-            {directorySuffix(file.path)}
-          </Text>
-        ) : (
-          <View style={styles.directorySpacer} />
-        )}
-      </View>
-      <View style={styles.right}>
-        <FileCommentBadge count={commentCount} testID={testID} />
-        <DiffStat
-          additions={file.additions}
-          deletions={file.deletions}
-          testID={testID ? `${testID}-stat` : undefined}
-        />
-        {changeIcon}
-      </View>
-    </View>
+    <FileHeaderContent
+      file={file}
+      showDir={showDir}
+      showsBodyState={showsBodyState}
+      nameBaseStyle={nameBaseStyle}
+      viewed={viewed}
+      isConflicted={isConflicted}
+      commentCount={commentCount}
+      onToggleViewed={onToggleViewed}
+      dragSourceRef={dragSourceRef}
+      testID={testID}
+    />
   );
   const renderedContent = canvasRendered ? (
     <View ref={dragSourceRef} style={styles.canvasInteractionContent} />
@@ -449,6 +550,22 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
+  },
+  viewedBox: {
+    width: 15,
+    height: 15,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewedBoxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  dimmed: {
+    opacity: 0.45,
   },
   commentBadgeText: {
     fontSize: theme.fontSize.sm,

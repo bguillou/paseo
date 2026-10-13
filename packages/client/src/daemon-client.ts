@@ -54,6 +54,8 @@ import type {
   CheckoutMergeFromBaseResponse,
   CheckoutPullResponse,
   CheckoutPushResponse,
+  CheckoutAbortMergeResponse,
+  CheckoutContinueMergeResponse,
   CheckoutRefreshResponse,
   CheckoutPrCreateResponse,
   CheckoutPrMergeResponse,
@@ -61,6 +63,8 @@ import type {
   CheckoutForgeReplyCommentResponse,
   CheckoutForgeResolveThreadResponse,
   CheckoutForgeRequestReviewResponse,
+  CheckoutForgeRerunChecksResponse,
+  CheckoutFileRangeResponse,
   CheckoutForgeSetAutoMergeResponse,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutForgeGetCheckDetailsResponse,
@@ -516,6 +520,8 @@ type CheckoutMergePayload = CheckoutMergeResponse["payload"];
 type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
 type CheckoutPullPayload = CheckoutPullResponse["payload"];
 type CheckoutPushPayload = CheckoutPushResponse["payload"];
+type CheckoutAbortMergePayload = CheckoutAbortMergeResponse["payload"];
+type CheckoutContinueMergePayload = CheckoutContinueMergeResponse["payload"];
 type CheckoutRefreshPayload = CheckoutRefreshResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
@@ -523,6 +529,8 @@ type CheckoutForgeSetAutoMergePayload = CheckoutForgeSetAutoMergeResponse["paylo
 type CheckoutForgeReplyCommentPayload = CheckoutForgeReplyCommentResponse["payload"];
 type CheckoutForgeResolveThreadPayload = CheckoutForgeResolveThreadResponse["payload"];
 type CheckoutForgeRequestReviewPayload = CheckoutForgeRequestReviewResponse["payload"];
+type CheckoutForgeRerunChecksPayload = CheckoutForgeRerunChecksResponse["payload"];
+type CheckoutFileRangePayload = CheckoutFileRangeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
 type CheckoutForgeGetCheckDetailsPayload = CheckoutForgeGetCheckDetailsResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
@@ -4341,6 +4349,31 @@ export class DaemonClient {
     });
   }
 
+  async checkoutAbortMerge(cwd: string, requestId?: string): Promise<CheckoutAbortMergePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.abort_merge.request",
+        cwd,
+      },
+      responseType: "checkout.abort_merge.response",
+    });
+  }
+
+  async checkoutContinueMerge(
+    cwd: string,
+    requestId?: string,
+  ): Promise<CheckoutContinueMergePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "checkout.continue_merge.request",
+        cwd,
+      },
+      responseType: "checkout.continue_merge.response",
+    });
+  }
+
   async listCheckoutCommits(
     cwd: string,
     requestId?: string,
@@ -4511,6 +4544,48 @@ export class DaemonClient {
         ...(input.repoName ? { repoName: input.repoName } : {}),
       },
       timeout: 60000,
+    });
+  }
+
+  async checkoutForgeRerunChecks(
+    cwd: string,
+    input: {
+      prNumber: number;
+      target: { mode: "run" | "failed" | "check"; workflowRunId?: number; checkRunId?: number };
+      repoOwner?: string;
+      repoName?: string;
+    },
+    requestId?: string,
+  ): Promise<CheckoutForgeRerunChecksPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.forge.rerun_checks.response">({
+      requestId,
+      message: {
+        type: "checkout.forge.rerun_checks.request",
+        cwd,
+        prNumber: input.prNumber,
+        target: input.target,
+        ...(input.repoOwner ? { repoOwner: input.repoOwner } : {}),
+        ...(input.repoName ? { repoName: input.repoName } : {}),
+      },
+      timeout: 60000,
+    });
+  }
+
+  async checkoutFileRange(
+    cwd: string,
+    input: { path: string; ref: string; startLine: number; endLine: number },
+    requestId?: string,
+  ): Promise<CheckoutFileRangePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.file_range.response">({
+      requestId,
+      message: {
+        type: "checkout.file_range.request",
+        cwd,
+        path: input.path,
+        ref: input.ref,
+        startLine: input.startLine,
+        endLine: input.endLine,
+      },
     });
   }
 

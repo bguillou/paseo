@@ -3,7 +3,11 @@ import { existsSync, realpathSync } from "fs";
 import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { setImmediate } from "node:timers/promises";
 import { TTLCache } from "@isaacs/ttlcache";
-import type { CheckoutCommit, CheckoutCommitFile } from "@getpaseo/protocol/messages";
+import type {
+  CheckoutCommit,
+  CheckoutCommitFile,
+  GitConflictOperation,
+} from "@getpaseo/protocol/messages";
 import { parseGitHubRemoteIdentity, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { maxBase64EncryptedPlaintextByteLength } from "@getpaseo/relay";
 import type { Logger } from "pino";
@@ -63,6 +67,7 @@ export type GitMutationRefreshReason =
   | "reply-comment"
   | "resolve-thread"
   | "request-review"
+  | "rerun-checks"
   | "create-pr"
   | "switch-branch"
   | "rename-branch"
@@ -71,7 +76,9 @@ export type GitMutationRefreshReason =
   | "stash-pop"
   | "discard-changes"
   | "set-base-ref"
-  | "create-worktree";
+  | "create-worktree"
+  | "abort-merge"
+  | "continue-merge";
 
 const DISCARD_CHANGES_TIMEOUT_MS = 120_000;
 const DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS = 30_000;
@@ -653,6 +660,46 @@ async function readGitFileContentAtRef(
   }
 }
 
+/**
+ * Reads a 1-based inclusive line range of a file, for "expand hidden context" in
+ * the diff view. `ref` is a git ref/sha read with `git show` (always repo-root
+ * relative), or the empty string to read the working-tree file. Returns the lines
+ * that exist within the range (fewer than asked at EOF), or null when the file or
+ * ref can't be read.
+ */
+export async function readCheckoutFileRange(
+  cwd: string,
+  input: { path: string; ref: string; startLine: number; endLine: number },
+): Promise<string[] | null> {
+  const content =
+    input.ref === ""
+      ? await readWorkingTreeFileContent(cwd, input.path)
+      : await readGitFileContentAtRef(cwd, input.ref, input.path);
+  if (content === null) {
+    return null;
+  }
+  const lines = content.split("\n");
+  // Drop the single trailing empty element from a final newline so it isn't
+  // revealed as a phantom blank line past EOF.
+  if (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  const start = Math.max(1, Math.floor(input.startLine));
+  const end = Math.min(lines.length, Math.floor(input.endLine));
+  if (end < start) {
+    return [];
+  }
+  return lines.slice(start - 1, end);
+}
+
+async function readWorkingTreeFileContent(cwd: string, path: string): Promise<string | null> {
+  try {
+    return await readFile(resolve(cwd, path), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 async function tryResolveMergeBase(cwd: string, baseRef: string): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["merge-base", baseRef, "HEAD"], {
@@ -915,6 +962,8 @@ export interface CheckoutStatusGitNonPaseo {
   mainRepoRoot: string | null;
   currentBranch: string | null;
   isDirty: boolean;
+  conflictedPaths: string[];
+  conflictOperation: GitConflictOperation | null;
   baseRef: string | null;
   aheadBehind: AheadBehind | null;
   // Remote-tracking ref for currentBranch, e.g. "refs/remotes/origin/main". Null when the
@@ -934,6 +983,8 @@ export interface CheckoutStatusGitPaseo {
   mainRepoRoot: string;
   currentBranch: string | null;
   isDirty: boolean;
+  conflictedPaths: string[];
+  conflictOperation: GitConflictOperation | null;
   baseRef: string;
   aheadBehind: AheadBehind | null;
   upstreamRef: string | null;
@@ -1426,6 +1477,83 @@ async function isWorkingTreeDirty(cwd: string, context?: CheckoutContext): Promi
     logger: context?.logger,
   });
   return stdout.trim().length > 0;
+}
+
+export interface GitConflictState {
+  paths: string[];
+  operation: GitConflictOperation | null;
+}
+
+// Marker files/dirs git writes into the (per-worktree) git dir while an operation
+// that can conflict is in progress. Ordered so the common case (merge) wins first.
+const CONFLICT_OPERATION_MARKERS: readonly { operation: GitConflictOperation; marker: string }[] = [
+  { operation: "merge", marker: "MERGE_HEAD" },
+  { operation: "rebase", marker: "rebase-merge" },
+  { operation: "rebase", marker: "rebase-apply" },
+  { operation: "cherry-pick", marker: "CHERRY_PICK_HEAD" },
+  { operation: "revert", marker: "REVERT_HEAD" },
+];
+
+async function detectConflictOperation(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<GitConflictOperation | null> {
+  let gitDir: string;
+  try {
+    const { stdout } = await getRunGitCommand(context)(["rev-parse", "--absolute-git-dir"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    });
+    gitDir = stdout.trim();
+  } catch {
+    return null;
+  }
+  if (!gitDir) {
+    return null;
+  }
+  for (const { operation, marker } of CONFLICT_OPERATION_MARKERS) {
+    if (existsSync(resolve(gitDir, marker))) {
+      return operation;
+    }
+  }
+  return null;
+}
+
+async function getUnmergedPaths(cwd: string, context?: CheckoutContext): Promise<string[]> {
+  try {
+    const { stdout } = await getRunGitCommand(context)(
+      ["diff", "--name-only", "--diff-filter=U", "-z"],
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+    );
+    const paths = new Set<string>();
+    for (const path of stdout.split("\0")) {
+      const trimmed = path.trim();
+      if (trimmed) {
+        paths.add(trimmed);
+      }
+    }
+    return [...paths];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Live working-tree conflict state: the unmerged paths and the in-progress
+ * operation that produced them (merge/rebase/cherry-pick/revert), or `null`
+ * operation when the tree is clean of any such operation. Read from the actual
+ * working tree, so it reflects conflicts an agent or a terminal left behind — not
+ * just conflicts from Paseo's own merge actions (which auto-abort).
+ */
+export async function getConflictState(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<GitConflictState> {
+  const [paths, operation] = await Promise.all([
+    getUnmergedPaths(cwd, context),
+    detectConflictOperation(cwd, context),
+  ]);
+  return { paths, operation };
 }
 
 export async function getOriginRemoteUrl(
@@ -2397,6 +2525,7 @@ export async function getCheckoutStatus(
   const remoteUrl = facts.remoteUrl;
   const paseoWorktree = facts.paseoWorktree;
   const isDirty = await isWorkingTreeDirty(cwd, context);
+  const conflict = await getConflictState(cwd, context);
   const hasRemote = remoteUrl !== null;
   const baseRef = facts.resolvedBaseRef;
   const mainRepoRoot = facts.mainRepoRoot;
@@ -2421,6 +2550,8 @@ export async function getCheckoutStatus(
       mainRepoRoot: mainRepoRoot ?? worktreeRoot,
       currentBranch,
       isDirty,
+      conflictedPaths: conflict.paths,
+      conflictOperation: conflict.operation,
       baseRef: displayBaseRef ?? baseRef,
       aheadBehind,
       upstreamRef,
@@ -2439,6 +2570,8 @@ export async function getCheckoutStatus(
       mainRepoRoot && resolve(mainRepoRoot) !== resolve(worktreeRoot) ? mainRepoRoot : null,
     currentBranch,
     isDirty,
+    conflictedPaths: conflict.paths,
+    conflictOperation: conflict.operation,
     baseRef: displayBaseRef,
     aheadBehind,
     upstreamRef,
@@ -3115,6 +3248,8 @@ export async function getCheckoutRefDerivedState(
 
 export interface CheckoutWorktreeState {
   isDirty: boolean;
+  conflictedPaths: string[];
+  conflictOperation: GitConflictOperation | null;
   diffStat: CheckoutShortstat | null;
 }
 
@@ -3122,11 +3257,17 @@ export async function getCheckoutWorktreeState(
   cwd: string,
   context: CheckoutContext,
 ): Promise<CheckoutWorktreeState> {
-  const [isDirty, diffStat] = await Promise.all([
+  const [isDirty, conflict, diffStat] = await Promise.all([
     isWorkingTreeDirty(cwd, context),
+    getConflictState(cwd, context),
     getCheckoutShortstat(cwd, context, { force: true }),
   ]);
-  return { isDirty, diffStat };
+  return {
+    isDirty,
+    conflictedPaths: conflict.paths,
+    conflictOperation: conflict.operation,
+    diffStat,
+  };
 }
 
 export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | null | undefined {
@@ -4008,6 +4149,73 @@ export async function pushCurrentBranch(cwd: string, forgeService?: ForgeService
   }
   await runGitCommand(["push", "-u", "origin", currentBranch], { cwd, timeout: 120_000 });
   forgeService?.invalidate({ cwd });
+}
+
+export class NoConflictOperationError extends Error {
+  readonly code = "NO_CONFLICT_OPERATION";
+
+  constructor(cwd: string) {
+    super(`No merge, rebase, cherry-pick, or revert is in progress: ${cwd}`);
+    this.name = "NoConflictOperationError";
+  }
+}
+
+export class ConflictsRemainingError extends Error {
+  readonly code = "CONFLICTS_REMAINING";
+  readonly conflictFiles: string[];
+
+  constructor(cwd: string, conflictFiles: string[]) {
+    super(`Cannot continue while ${conflictFiles.length} path(s) remain conflicted: ${cwd}`);
+    this.name = "ConflictsRemainingError";
+    this.conflictFiles = conflictFiles;
+  }
+}
+
+const ABORT_COMMAND_BY_OPERATION: Record<GitConflictOperation, string[]> = {
+  merge: ["merge", "--abort"],
+  rebase: ["rebase", "--abort"],
+  "cherry-pick": ["cherry-pick", "--abort"],
+  revert: ["revert", "--abort"],
+};
+
+const CONTINUE_COMMAND_BY_OPERATION: Record<GitConflictOperation, string[]> = {
+  merge: ["commit", "--no-edit"],
+  rebase: ["rebase", "--continue"],
+  "cherry-pick": ["cherry-pick", "--continue"],
+  revert: ["revert", "--continue"],
+};
+
+/** Abort the in-progress merge/rebase/cherry-pick/revert, dropping the conflict. */
+export async function abortConflictOperation(cwd: string): Promise<void> {
+  await requireGitRepo(cwd);
+  const operation = await detectConflictOperation(cwd);
+  if (!operation) {
+    throw new NoConflictOperationError(cwd);
+  }
+  await runGitCommand(ABORT_COMMAND_BY_OPERATION[operation], { cwd, timeout: 120_000 });
+}
+
+/**
+ * Complete the in-progress operation once the conflicts are resolved: stage the
+ * resolved files, then finish. Refuses while any path is still unmerged.
+ * GIT_EDITOR=true so completing never blocks on an interactive editor.
+ */
+export async function continueConflictOperation(cwd: string): Promise<void> {
+  await requireGitRepo(cwd);
+  const operation = await detectConflictOperation(cwd);
+  if (!operation) {
+    throw new NoConflictOperationError(cwd);
+  }
+  const unmerged = await getUnmergedPaths(cwd);
+  if (unmerged.length > 0) {
+    throw new ConflictsRemainingError(cwd, unmerged);
+  }
+  await runGitCommand(["add", "-A"], { cwd, timeout: 120_000 });
+  await runGitCommand(CONTINUE_COMMAND_BY_OPERATION[operation], {
+    cwd,
+    timeout: 120_000,
+    envOverlay: { GIT_EDITOR: "true" },
+  });
 }
 
 async function getCurrentBranchConfiguredPushTarget(

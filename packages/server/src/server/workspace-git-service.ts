@@ -5,7 +5,7 @@ import { LRUCache } from "lru-cache";
 import { CheckoutDiffCache } from "./checkout-diff-cache.js";
 import pLimit from "p-limit";
 import type pino from "pino";
-import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
+import type { GitConflictOperation, ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import type { CheckoutContext } from "../utils/checkout-git.js";
 import {
@@ -21,6 +21,7 @@ import {
   getCheckoutStatus,
   getCheckoutWorktreeState,
   getPullRequestStatus,
+  readCheckoutFileRange,
   forgeAuthStateFromError,
   hasOriginRemote,
   listBranchSuggestions,
@@ -164,6 +165,8 @@ export interface WorkspaceGitRuntimeSnapshot {
     remoteUrl: string | null;
     isPaseoOwnedWorktree: boolean;
     isDirty: boolean | null;
+    conflictedPaths: string[];
+    conflictOperation: GitConflictOperation | null;
     baseRef: string | null;
     aheadBehind: { ahead: number; behind: number } | null;
     upstreamRef: string | null;
@@ -223,6 +226,10 @@ export interface WorkspaceGitService {
     options: CheckoutDiffCompare,
     readOptions?: WorkspaceGitReadOptions,
   ): Promise<CheckoutDiffResult>;
+  readFileRange(
+    cwd: string,
+    input: { path: string; ref: string; startLine: number; endLine: number },
+  ): Promise<string[] | null>;
   validateBranchRef(
     cwd: string,
     ref: string,
@@ -371,6 +378,7 @@ interface WorkspaceGitServiceDependencies {
   getCheckoutShortstat: typeof getCheckoutShortstat;
   getCheckoutWorktreeState: typeof getCheckoutWorktreeState;
   getCheckoutDiff: typeof getCheckoutDiff;
+  readCheckoutFileRange: typeof readCheckoutFileRange;
   getPullRequestStatus: typeof getPullRequestStatus;
   resolveBranchCheckout: typeof resolveBranchCheckout;
   resolveRepositoryDefaultBranch: typeof resolveRepositoryDefaultBranch;
@@ -564,6 +572,7 @@ function buildDefaultWorkspaceGitServiceDeps(
     getCheckoutShortstat,
     getCheckoutWorktreeState,
     getCheckoutDiff,
+    readCheckoutFileRange,
     getPullRequestStatus,
     resolveBranchCheckout,
     resolveRepositoryDefaultBranch,
@@ -814,6 +823,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           worktreesRoot: this.worktreesRoot,
         }),
     });
+  }
+
+  async readFileRange(
+    cwd: string,
+    input: { path: string; ref: string; startLine: number; endLine: number },
+  ): Promise<string[] | null> {
+    this.assertNotDisposed();
+    return this.deps.readCheckoutFileRange(resolve(cwd), input);
   }
 
   private normalizeCheckoutDiffOptions(options: CheckoutDiffCompare): CheckoutDiffCompare {
@@ -3340,6 +3357,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.latestGit = {
       ...latestGit,
       isDirty: worktree.isDirty,
+      conflictedPaths: worktree.conflictedPaths,
+      conflictOperation: worktree.conflictOperation,
       diffStat: worktree.diffStat,
     };
     const loadedAtMs = this.deps.now().getTime();
@@ -3393,6 +3412,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       isDirty: refreshWorktree
         ? checkoutStatus.isDirty
         : (target.latestGit?.isDirty ?? checkoutStatus.isDirty),
+      conflictedPaths: checkoutStatus.conflictedPaths,
+      conflictOperation: checkoutStatus.conflictOperation,
       baseRef: checkoutStatus.baseRef,
       aheadBehind: checkoutStatus.aheadBehind,
       upstreamRef: checkoutStatus.upstreamRef,
@@ -3908,6 +3929,8 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       remoteUrl: null,
       isPaseoOwnedWorktree: false,
       isDirty: null,
+      conflictedPaths: [],
+      conflictOperation: null,
       baseRef: null,
       aheadBehind: null,
       upstreamRef: null,

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -17,6 +18,7 @@ import {
   type LayoutChangeEvent,
   type ViewStyle,
 } from "react-native";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react-native";
 import Animated, {
   createAnimatedComponent,
   useAnimatedReaction,
@@ -29,6 +31,12 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { InlineReviewThread } from "@/review";
 import { PrInlineThread } from "./pr-inline-thread";
+import {
+  computeExpandableGaps,
+  EXPAND_CONTEXT_CHUNK,
+  type DiffContextGap,
+  type ExpandDirection,
+} from "./expand-context";
 import { useKeyboardShift } from "@/keyboard/shift";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { DocumentFileHeader } from "./document-file-header";
@@ -328,6 +336,12 @@ export function DiffSurface(props: DiffSurfaceProps) {
           />
         ))}
         <NativeReviewOverlays model={model} mode={props.mode} />
+        <NativeExpandControls
+          model={model}
+          mode={props.mode}
+          mutedColor={props.palette.foregroundMuted}
+          surfaceColor={props.palette.headerSurface}
+        />
         <Animated.View pointerEvents="none" style={keyboardSpacerStyle} />
       </AnimatedScrollView>
     </View>
@@ -597,6 +611,128 @@ function NativeReviewOverlays({
       return overlays;
     });
   });
+}
+
+function NativeExpandControls({
+  model,
+  mode,
+  mutedColor,
+  surfaceColor,
+}: {
+  model: DiffDocumentModel;
+  mode: DiffSurfaceProps["mode"];
+  mutedColor: string;
+  surfaceColor: string;
+}) {
+  const { t } = useTranslation();
+  const onExpandGap = mode.kind === "working" ? mode.onExpandGap : undefined;
+  if (!onExpandGap) return null;
+  const expandLabel: Record<ExpandDirection, string> = {
+    up: t("workspace.git.diff.expandUp"),
+    down: t("workspace.git.diff.expandDown"),
+    all: t("workspace.git.diff.expandAll"),
+  };
+  const gapsByPath = new Map<string, { gaps: Map<number, DiffContextGap>; gutterWidth: number }>();
+  for (const section of model.files) {
+    const gaps = new Map<number, DiffContextGap>();
+    for (const gap of computeExpandableGaps(section.file)) {
+      gaps.set(gap.hunkIndex, gap);
+    }
+    if (gaps.size > 0) {
+      gapsByPath.set(section.path, { gaps, gutterWidth: section.gutterWidth });
+    }
+  }
+  return model.rows.flatMap((row) => {
+    if (row.kind !== "line") return [];
+    const headerCell = row.cells[0];
+    if (!headerCell || headerCell.type !== "header") return [];
+    const entry = gapsByPath.get(row.path);
+    const gap = entry?.gaps.get(headerCell.sourceIdentity.hunkIndex);
+    if (!gap || !entry) return [];
+    const small = gap.size <= EXPAND_CONTEXT_CHUNK;
+    const buttons: { direction: ExpandDirection; Icon: typeof ChevronUp }[] = small
+      ? [{ direction: "all", Icon: ChevronsUpDown }]
+      : [
+          ...(gap.aboveHunkIndex !== null
+            ? [{ direction: "down" as const, Icon: ChevronDown }]
+            : []),
+          { direction: "up" as const, Icon: ChevronUp },
+        ];
+    return [
+      <View
+        key={`expand:${row.path}:${gap.hunkIndex}`}
+        style={inlineUnistylesStyle<ViewStyle>({
+          position: "absolute",
+          top: row.top,
+          left: 0,
+          width: Math.max(entry.gutterWidth, 22),
+          height: row.height,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 1,
+          zIndex: 6,
+        })}
+      >
+        {buttons.map(({ direction, Icon }) => (
+          <NativeExpandButton
+            key={direction}
+            direction={direction}
+            Icon={Icon}
+            path={row.path}
+            gap={gap}
+            label={expandLabel[direction]}
+            mutedColor={mutedColor}
+            surfaceColor={surfaceColor}
+            onExpandGap={onExpandGap}
+          />
+        ))}
+      </View>,
+    ];
+  });
+}
+
+function NativeExpandButton({
+  direction,
+  Icon,
+  path,
+  gap,
+  label,
+  mutedColor,
+  surfaceColor,
+  onExpandGap,
+}: {
+  direction: ExpandDirection;
+  Icon: typeof ChevronUp;
+  path: string;
+  gap: DiffContextGap;
+  label: string;
+  mutedColor: string;
+  surfaceColor: string;
+  onExpandGap: (path: string, gap: DiffContextGap, direction: ExpandDirection) => void;
+}) {
+  const handlePress = useCallback(
+    () => onExpandGap(path, gap, direction),
+    [direction, gap, onExpandGap, path],
+  );
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={6}
+      accessibilityLabel={label}
+      style={inlineUnistylesStyle<ViewStyle>({
+        width: 16,
+        height: 16,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 3,
+        backgroundColor: surfaceColor,
+      })}
+      testID={`diff-expand-${direction}`}
+    >
+      <Icon size={12} color={mutedColor} />
+    </Pressable>
+  );
 }
 
 function NativeCanvasSlabView({

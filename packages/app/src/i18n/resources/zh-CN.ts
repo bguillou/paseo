@@ -850,6 +850,18 @@ export const zhCN: TranslationResources = {
           pending: "正在更新...",
           success: "已更新",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "归档工作区",
           pending: "正在归档...",
@@ -937,6 +949,27 @@ export const zhCN: TranslationResources = {
           unpushedCommits: "{{count}} 个未 push 的 commit",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "打开“更改”标签页",
         openDiffTab: "打开 Diff 标签页",
@@ -970,6 +1003,9 @@ export const zhCN: TranslationResources = {
         seeCommittedChanges: "查看已 commit 的变更",
         checkingRepository: "正在检查 repository...",
         notRepository: "不是 git repository",
+        expandUp: "展开上方的行",
+        expandDown: "展开下方的行",
+        expandAll: "展开所有隐藏的行",
         diffMode: "Diff 模式",
         uncommitted: "未 commit",
         committed: "已 commit",
@@ -978,6 +1014,7 @@ export const zhCN: TranslationResources = {
         newFile: "新增",
         deletedFile: "已删除",
         modifiedFile: "已修改",
+        conflictedFile: "Conflicted",
         commits: {
           title: "提交",
           countLabel: "{{count}} 个工作区提交",
@@ -1011,6 +1048,9 @@ export const zhCN: TranslationResources = {
           openInDiff: "在差异中打开",
           showResolved: "显示已解决",
           hideResolved: "隐藏已解决",
+          rerun: "重新运行",
+          rerunCheck: "重新运行此检查",
+          rerunFailed: "重新运行失败项",
         },
         checksOverview: {
           headline: {
@@ -1128,6 +1168,7 @@ export const zhCN: TranslationResources = {
           replyFailed: "无法发布回复",
           resolveFailed: "无法更新讨论",
           requestReviewFailed: "无法请求审查",
+          rerunChecksFailed: "无法重新运行 CI",
         },
       },
       forgeSetup: {
@@ -1997,6 +2038,10 @@ export const zhCN: TranslationResources = {
       emptyTitle: "尚无拉取请求",
       emptyDescription: "为此检出创建拉取请求后，可在此处查看其详情。",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "更改",
       diffLabel: "Diff",
@@ -2810,6 +2855,14 @@ export const zhCN: TranslationResources = {
         uncommittedDescription: "新工作树使用所选基础分支中的设置脚本。",
         teardown: "Teardown",
         teardownAccessibility: "Worktree teardown 命令",
+        portStart: "起始端口",
+        portStartInfo:
+          "可选的基础 TCP 端口。每个 worktree 会获得一个确定的端口（起始端口 + 10 × 槽位），并以 $PASEO_WORKTREE_PORT 提供给其命令。留空则使用随机空闲端口。",
+        portStartAccessibility: "Worktree 起始端口",
+        portStartError: {
+          invalid: "请输入整数。",
+          range: "端口必须在 1 到 65535 之间。",
+        },
       },
       scripts: {
         title: "Scripts",

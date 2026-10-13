@@ -858,6 +858,18 @@ export const ja: TranslationResources = {
           pending: "更新中...",
           success: "更新しました",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "ワークスペースをアーカイブ",
           pending: "アーカイブ中...",
@@ -958,6 +970,27 @@ export const ja: TranslationResources = {
           unpushedCommits: "{{count}}件の未プッシュコミット",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "変更タブを開く",
         openDiffTab: "差分タブを開く",
@@ -991,6 +1024,9 @@ export const ja: TranslationResources = {
         seeCommittedChanges: "コミット済みの変更を表示",
         checkingRepository: "リポジトリを確認中...",
         notRepository: "gitリポジトリではありません",
+        expandUp: "上の行を展開",
+        expandDown: "下の行を展開",
+        expandAll: "隠れた行をすべて展開",
         diffMode: "差分モード",
         uncommitted: "未コミット",
         committed: "コミット済み",
@@ -999,6 +1035,7 @@ export const ja: TranslationResources = {
         newFile: "新規",
         deletedFile: "削除済み",
         modifiedFile: "変更済み",
+        conflictedFile: "Conflicted",
         commits: {
           title: "コミット",
           countLabel: "ワークスペースのコミット数: {{count}}",
@@ -1032,6 +1069,9 @@ export const ja: TranslationResources = {
           openInDiff: "差分で開く",
           showResolved: "解決済みを表示",
           hideResolved: "解決済みを非表示",
+          rerun: "再実行",
+          rerunCheck: "このチェックを再実行",
+          rerunFailed: "失敗を再実行",
         },
         checksOverview: {
           headline: {
@@ -1149,6 +1189,7 @@ export const ja: TranslationResources = {
           replyFailed: "返信を投稿できません",
           resolveFailed: "スレッドを更新できません",
           requestReviewFailed: "レビューをリクエストできません",
+          rerunChecksFailed: "CI を再実行できません",
         },
       },
       forgeSetup: {
@@ -2039,6 +2080,10 @@ export const ja: TranslationResources = {
       emptyDescription:
         "このチェックアウトのプルリクエストを作成すると、ここに詳細が表示されます。",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "変更",
       diffLabel: "差分",
@@ -2874,6 +2919,14 @@ export const ja: TranslationResources = {
           "新しいワークツリーでは、選択したベースブランチのセットアップスクリプトが使われます。",
         teardown: "削除時",
         teardownAccessibility: "ワークツリー削除時のコマンド",
+        portStart: "開始ポート",
+        portStartInfo:
+          "任意のベース TCP ポート。各ワークツリーには決定的なポート（開始ポート + 10 × スロット）が割り当てられ、コマンドには $PASEO_WORKTREE_PORT として渡されます。空欄の場合はランダムな空きポートを使用します。",
+        portStartAccessibility: "ワークツリーの開始ポート",
+        portStartError: {
+          invalid: "整数を入力してください。",
+          range: "ポートは 1〜65535 の範囲で指定してください。",
+        },
       },
       scripts: {
         title: "スクリプト",

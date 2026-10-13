@@ -1,6 +1,13 @@
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { floatingActionsClearance } from "@/components/ui/floating-action-button";
-import { useState, useCallback, useMemo, type ReactElement, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { TreeRail } from "@/components/tree-rail";
@@ -31,6 +38,14 @@ import {
   WrapText,
 } from "lucide-react-native";
 import { type ParsedDiffFile } from "@/git/use-diff-query";
+import { computeDiffFileSignature } from "@/git/diff-sharing";
+import {
+  mergeRevealedAbove,
+  mergeRevealedBelow,
+  resolveExpandRequest,
+  type DiffContextGap,
+  type ExpandDirection,
+} from "@/git/diff-document/expand-context";
 import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
 import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
@@ -1280,6 +1295,9 @@ function ChangesTreeRail({
   onTreeWidthChange,
   collapsedFolderPaths,
   onCollapsedFolderPathsChange,
+  viewedPaths,
+  conflictedPaths,
+  onToggleViewed,
 }: {
   shown: boolean;
   children: ReactElement;
@@ -1290,6 +1308,9 @@ function ChangesTreeRail({
   onTreeWidthChange: (width: number) => void;
   collapsedFolderPaths: string[];
   onCollapsedFolderPathsChange: (paths: string[]) => void;
+  viewedPaths?: ReadonlySet<string>;
+  conflictedPaths?: ReadonlySet<string>;
+  onToggleViewed?: (path: string) => void;
 }) {
   if (!shown) return children;
   return (
@@ -1301,6 +1322,9 @@ function ChangesTreeRail({
         onSelectFile={onSelectFile}
         collapsedFolderPaths={collapsedFolderPaths}
         onCollapsedFolderPathsChange={onCollapsedFolderPathsChange}
+        viewedPaths={viewedPaths}
+        conflictedPaths={conflictedPaths}
+        onToggleViewed={onToggleViewed}
       />
     </TreeRail>
   );
@@ -1318,6 +1342,9 @@ function ChangesBody({
   onTreeWidthChange,
   collapsedFolderPaths,
   onCollapsedFolderPathsChange,
+  viewedPaths,
+  conflictedPaths,
+  onToggleViewed,
 }: {
   presentation: ChangesPresentation;
   children: ReactElement;
@@ -1330,6 +1357,9 @@ function ChangesBody({
   onTreeWidthChange: (width: number) => void;
   collapsedFolderPaths: string[];
   onCollapsedFolderPathsChange: (paths: string[]) => void;
+  viewedPaths?: ReadonlySet<string>;
+  conflictedPaths?: ReadonlySet<string>;
+  onToggleViewed?: (path: string) => void;
 }) {
   if (presentation === "tree") {
     if (files.length === 0) return children;
@@ -1340,6 +1370,9 @@ function ChangesBody({
         onSelectFile={onSelectFile}
         collapsedFolderPaths={collapsedFolderPaths}
         onCollapsedFolderPathsChange={onCollapsedFolderPathsChange}
+        viewedPaths={viewedPaths}
+        conflictedPaths={conflictedPaths}
+        onToggleViewed={onToggleViewed}
       />
     );
   }
@@ -1354,6 +1387,9 @@ function ChangesBody({
       onTreeWidthChange={onTreeWidthChange}
       collapsedFolderPaths={collapsedFolderPaths}
       onCollapsedFolderPathsChange={onCollapsedFolderPathsChange}
+      viewedPaths={viewedPaths}
+      conflictedPaths={conflictedPaths}
+      onToggleViewed={onToggleViewed}
     >
       {children}
     </ChangesTreeRail>
@@ -1578,6 +1614,124 @@ export function ChangesSurface({
     attachment: reviewAttachment,
     enabled: true,
   });
+
+  const conflictStateEnabled = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.gitConflictState === true,
+  );
+  const conflictedPaths = useMemo(() => {
+    if (!conflictStateEnabled || !status?.isGit) {
+      return undefined;
+    }
+    const paths = status.conflictedPaths ?? [];
+    return paths.length > 0 ? new Set(paths) : undefined;
+  }, [conflictStateEnabled, status]);
+
+  // "Viewed" state. Marking a file viewed collapses its diff and dims its tree
+  // row; a later change to the file's diff (signature mismatch) auto-clears the
+  // mark and re-expands it, matching GitHub.
+  const signatureByPath = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const file of files) {
+      map.set(file.path, computeDiffFileSignature(file));
+    }
+    return map;
+  }, [files]);
+  const viewedFiles = instanceState.viewedFiles;
+  const viewedPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const entry of viewedFiles) {
+      if (signatureByPath.get(entry.path) === entry.signature) {
+        paths.add(entry.path);
+      }
+    }
+    return paths;
+  }, [signatureByPath, viewedFiles]);
+  // Drop viewed marks whose file changed or disappeared, re-expanding those rows.
+  useEffect(() => {
+    const live = viewedFiles.filter((entry) => signatureByPath.get(entry.path) === entry.signature);
+    if (live.length === viewedFiles.length) return;
+    const stale = new Set(
+      viewedFiles
+        .filter((entry) => signatureByPath.get(entry.path) !== entry.signature)
+        .map((entry) => entry.path),
+    );
+    updateState({
+      ...instanceState,
+      viewedFiles: live,
+      collapsedFilePaths: instanceState.collapsedFilePaths.filter((path) => !stale.has(path)),
+    });
+  }, [instanceState, signatureByPath, updateState, viewedFiles]);
+  const toggleViewed = useCallback(
+    (path: string) => {
+      const isViewed = viewedFiles.some((entry) => entry.path === path);
+      if (isViewed) {
+        updateState({
+          ...instanceState,
+          viewedFiles: viewedFiles.filter((entry) => entry.path !== path),
+          collapsedFilePaths: instanceState.collapsedFilePaths.filter((p) => p !== path),
+        });
+        return;
+      }
+      const signature = signatureByPath.get(path);
+      if (signature === undefined) return;
+      updateState({
+        ...instanceState,
+        viewedFiles: [...viewedFiles, { path, signature }],
+        collapsedFilePaths: instanceState.collapsedFilePaths.includes(path)
+          ? instanceState.collapsedFilePaths
+          : [...instanceState.collapsedFilePaths, path],
+      });
+    },
+    [instanceState, signatureByPath, updateState, viewedFiles],
+  );
+
+  // GitHub-style "expand hidden context". Revealed lines are merged into the
+  // file's hunks as context (keyed by the original file's signature), so the
+  // existing renderer draws them; a changed diff drops the expansion.
+  const fileRangeEnabled = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutFileRange === true,
+  );
+  const [expandedByPath, setExpandedByPath] = useState<
+    Map<string, { signature: string; file: ParsedDiffFile }>
+  >(() => new Map());
+  const displayFiles = useMemo(() => {
+    if (expandedByPath.size === 0) return files;
+    return files.map((file) => {
+      const entry = expandedByPath.get(file.path);
+      return entry && entry.signature === signatureByPath.get(file.path) ? entry.file : file;
+    });
+  }, [expandedByPath, files, signatureByPath]);
+  const handleExpandGap = useCallback(
+    async (path: string, gap: DiffContextGap, direction: ExpandDirection) => {
+      if (!client) return;
+      const request = resolveExpandRequest(gap, direction);
+      if (!request) return;
+      const ref = diffMode === "base" ? (baseRef ?? "HEAD") : "HEAD";
+      const payload = await client.checkoutFileRange(cwd, {
+        path,
+        ref,
+        startLine: request.oldStart,
+        endLine: request.oldEnd,
+      });
+      const lines = payload.lines;
+      if (!lines || lines.length === 0) return;
+      setExpandedByPath((previous) => {
+        const original = files.find((file) => file.path === path);
+        if (!original) return previous;
+        const signature = signatureByPath.get(path) ?? computeDiffFileSignature(original);
+        const existing = previous.get(path);
+        const base = existing && existing.signature === signature ? existing.file : original;
+        const merged =
+          request.merge === "above"
+            ? mergeRevealedAbove(base, request.hunkIndex, lines)
+            : mergeRevealedBelow(base, request.hunkIndex, lines);
+        const next = new Map(previous);
+        next.set(path, { signature, file: merged });
+        return next;
+      });
+    },
+    [baseRef, client, cwd, diffMode, files, signatureByPath],
+  );
   // Forge PR comment threads render inline only against the base diff (which matches
   // the PR's cumulative changes); the uncommitted diff is local work the PR hasn't seen.
   const prReviewActions = usePrInlineReview({
@@ -1741,6 +1895,7 @@ export function ChangesSurface({
       onDownload: handleDownloadPath,
       onDuplicate: fsEntryDuplicateEnabled ? handleDuplicatePath : undefined,
       onRevert: onRevertPath,
+      onExpandGap: fileRangeEnabled ? handleExpandGap : undefined,
     }),
     [
       reviewActions,
@@ -1759,6 +1914,8 @@ export function ChangesSurface({
       fileManagerTarget,
       fsEntryDuplicateEnabled,
       onRevertPath,
+      fileRangeEnabled,
+      handleExpandGap,
     ],
   );
 
@@ -1813,6 +1970,17 @@ export function ChangesSurface({
 
   const diffContent: ReactElement = (
     <View style={styles.diffContainer}>
+      {/* Review submit lives at the top (file-titles level), not a floating button. */}
+      <ReviewFeedbackAction
+        placement="inline"
+        bottomOffset={0}
+        enabled={enabled}
+        hasDiff={presentation !== "tree"}
+        model={reviewFeedback.model}
+        state={reviewFeedback.state}
+        serverId={serverId}
+        workspaceId={workspaceId}
+      />
       <DiffBodyContent
         isStatusLoading={isStatusLoading}
         statusErrorMessage={statusErrorMessage}
@@ -1827,25 +1995,13 @@ export function ChangesSurface({
         notRepositoryLabel={t("workspace.git.diff.notRepository")}
       >
         <DiffDocument
-          files={files}
-          contentInsetBottom={floatingActionsClearance(
-            [jumpToFileInset, reviewFeedback.clearance],
-            bottomInset,
-          )}
+          files={displayFiles}
+          contentInsetBottom={floatingActionsClearance([jumpToFileInset], bottomInset)}
           collapseState={collapseState}
           displayPreferences={sharedDisplayPreferences}
           mode={workingMode}
         />
       </DiffBodyContent>
-      <ReviewFeedbackAction
-        bottomOffset={jumpToFileInset}
-        enabled={enabled}
-        hasDiff={presentation !== "tree"}
-        model={reviewFeedback.model}
-        state={reviewFeedback.state}
-        serverId={serverId}
-        workspaceId={workspaceId}
-      />
     </View>
   );
   const bodyContent = (
@@ -1860,6 +2016,9 @@ export function ChangesSurface({
       onTreeWidthChange={handleChangesTreeWidth}
       collapsedFolderPaths={instanceState.collapsedFolderPaths}
       onCollapsedFolderPathsChange={updateCollapsedFolderPaths}
+      viewedPaths={viewedPaths}
+      conflictedPaths={conflictedPaths}
+      onToggleViewed={toggleViewed}
     >
       {diffContent}
     </ChangesBody>

@@ -858,6 +858,18 @@ export const ptBR: TranslationResources = {
           pending: "Atualizando...",
           success: "Atualizado",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "Arquivar workspace",
           pending: "Arquivando...",
@@ -968,6 +980,27 @@ export const ptBR: TranslationResources = {
           unpushedCommits: "{{count}} commits não enviados",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "Abrir a aba Alterações",
         openDiffTab: "Abrir a aba Diff",
@@ -1001,6 +1034,9 @@ export const ptBR: TranslationResources = {
         seeCommittedChanges: "Ver alterações com commit",
         checkingRepository: "Verificando repositório...",
         notRepository: "Não é um repositório git",
+        expandUp: "Expandir linhas acima",
+        expandDown: "Expandir linhas abaixo",
+        expandAll: "Expandir todas as linhas ocultas",
         diffMode: "Modo de diff",
         uncommitted: "Sem commit",
         committed: "Com commit",
@@ -1009,6 +1045,7 @@ export const ptBR: TranslationResources = {
         newFile: "Novo",
         deletedFile: "Excluído",
         modifiedFile: "Modificado",
+        conflictedFile: "Conflicted",
         commits: {
           title: "Commits",
           countLabel: "{{count}} commits do espaço de trabalho",
@@ -1042,6 +1079,9 @@ export const ptBR: TranslationResources = {
           openInDiff: "Abrir no diff",
           showResolved: "Mostrar resolvidos",
           hideResolved: "Ocultar resolvidos",
+          rerun: "Reexecutar",
+          rerunCheck: "Reexecutar esta verificação",
+          rerunFailed: "Reexecutar com falha",
         },
         checksOverview: {
           headline: {
@@ -1159,6 +1199,7 @@ export const ptBR: TranslationResources = {
           replyFailed: "Não foi possível publicar a resposta",
           resolveFailed: "Não foi possível atualizar o tópico",
           requestReviewFailed: "Não foi possível solicitar a revisão",
+          rerunChecksFailed: "Não foi possível reexecutar a CI",
         },
       },
       forgeSetup: {
@@ -2052,6 +2093,10 @@ export const ptBR: TranslationResources = {
       emptyTitle: "Ainda não há pull request",
       emptyDescription: "Crie um pull request para este checkout para ver os detalhes aqui.",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "Alterações",
       diffLabel: "Diff",
@@ -2887,6 +2932,14 @@ export const ptBR: TranslationResources = {
           "Novos worktrees usam o script de configuração do branch base selecionado.",
         teardown: "Desmontagem",
         teardownAccessibility: "Comandos de desmontagem do worktree",
+        portStart: "Porta inicial",
+        portStartInfo:
+          "Porta TCP base opcional. Cada worktree recebe uma porta determinística (porta inicial + 10 × slot), exposta aos comandos como $PASEO_WORKTREE_PORT. Deixe em branco para uma porta livre aleatória.",
+        portStartAccessibility: "Porta inicial do worktree",
+        portStartError: {
+          invalid: "Insira um número inteiro.",
+          range: "A porta deve estar entre 1 e 65535.",
+        },
       },
       scripts: {
         title: "Scripts",

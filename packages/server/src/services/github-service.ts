@@ -50,6 +50,7 @@ import type {
   PullRequestTimelineErrorKind,
   PullRequestTimelineItem,
   PullRequestTimelineReviewState,
+  RerunChecksOptions,
   SearchResult,
 } from "./forge-service.js";
 import {
@@ -96,6 +97,7 @@ export type {
   PullRequestTimelineErrorKind,
   PullRequestTimelineItem,
   PullRequestTimelineReviewState,
+  RerunChecksOptions,
   SearchIssuesAndPrsOptions,
   SearchResult,
 } from "./forge-service.js";
@@ -2760,6 +2762,27 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       return { ok: true };
     },
 
+    async rerunChecks(input) {
+      let slug = await resolveGitHubSlugFromOrigin(input.cwd);
+      if (!slug) {
+        const repoView = await getGitHubRepoView({ cwd: input.cwd, run });
+        slug =
+          repoView?.owner?.login && repoView.name
+            ? `${repoView.owner.login}/${repoView.name}`
+            : null;
+      }
+      if (!slug) {
+        throw new Error("Unable to resolve GitHub repository for CI re-run");
+      }
+      await runGhJson(
+        ["api", "-X", "POST", buildGitHubRerunApiPath(slug, input)],
+        { cwd: input.cwd },
+        z.unknown(),
+        "{}",
+      );
+      return { ok: true };
+    },
+
     async mergePullRequest(input) {
       assertDirectPullRequestMergeReady(input);
       await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
@@ -2912,6 +2935,25 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 function normalizeGitHubOwnerForBranch(owner: string | null): string | null {
   const normalized = owner?.trim().toLowerCase() ?? "";
   return /^[a-z0-9-]+$/.test(normalized) ? normalized : null;
+}
+
+/**
+ * GitHub REST path for a CI re-run. "run"/"failed" target the Actions workflow
+ * run (we have its id on every check row); "check" re-requests a single check
+ * run via the Checks API, which re-runs that check's backing job.
+ */
+export function buildGitHubRerunApiPath(slug: string, input: RerunChecksOptions): string {
+  if (input.mode === "check") {
+    if (input.checkRunId === undefined) {
+      throw new Error("rerunChecks: checkRunId is required for mode 'check'");
+    }
+    return `repos/${slug}/check-runs/${input.checkRunId}/rerequest`;
+  }
+  if (input.workflowRunId === undefined) {
+    throw new Error(`rerunChecks: workflowRunId is required for mode '${input.mode}'`);
+  }
+  const suffix = input.mode === "failed" ? "rerun-failed-jobs" : "rerun";
+  return `repos/${slug}/actions/runs/${input.workflowRunId}/${suffix}`;
 }
 
 function getGithubStatusFacts(

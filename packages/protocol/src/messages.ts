@@ -2299,6 +2299,22 @@ export const CheckoutDiscardChangesRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Abort the in-progress merge/rebase/cherry-pick/revert that left the working tree
+// conflicted. Gated on server_info.features.checkoutConflictResolution.
+export const CheckoutAbortMergeRequestSchema = z.object({
+  type: z.literal("checkout.abort_merge.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+// Complete the in-progress merge/rebase/cherry-pick/revert once conflicts are
+// resolved. Gated on server_info.features.checkoutConflictResolution.
+export const CheckoutContinueMergeRequestSchema = z.object({
+  type: z.literal("checkout.continue_merge.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
 export const CheckoutPrCreateRequestSchema = z.object({
   type: z.literal("checkout_pr_create_request"),
   cwd: z.string(),
@@ -2393,6 +2409,41 @@ export const CheckoutForgeRequestReviewRequestSchema = z.object({
   reviewerLogin: z.string(),
   // Repo identity from the PR panel, for adapters that can't resolve the slug from
   // the cwd remote. Optional: GitHub resolves from origin, GitLab uses :fullpath.
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
+  requestId: z.string(),
+});
+
+// Read a contiguous line range of a file, for GitHub-style "expand hidden context"
+// in the diff view. Gated on server_info.features.checkoutFileRange. `ref` is a git
+// ref/sha, or the empty string for the working-tree file. The range is 1-based and
+// inclusive; the response returns however many of those lines exist.
+export const CheckoutFileRangeRequestSchema = z.object({
+  type: z.literal("checkout.file_range.request"),
+  cwd: z.string(),
+  path: z.string(),
+  ref: z.string(),
+  startLine: z.number(),
+  endLine: z.number(),
+  requestId: z.string(),
+});
+
+// Re-run CI from the Checks view. Gated on server_info.features.checkoutForgeRerunChecks.
+// `mode` selects the scope; the server requires the id matching the mode:
+//  - "run"    re-runs every job in the workflow run (needs workflowRunId)
+//  - "failed" re-runs only the failed jobs in the workflow run (needs workflowRunId)
+//  - "check"  re-runs a single check run (needs checkRunId)
+export const CheckoutForgeRerunChecksRequestSchema = z.object({
+  type: z.literal("checkout.forge.rerun_checks.request"),
+  cwd: z.string(),
+  prNumber: z.number(),
+  target: z.object({
+    mode: z.enum(["run", "failed", "check"]),
+    workflowRunId: z.number().optional(),
+    checkRunId: z.number().optional(),
+  }),
+  // Repo identity from the PR panel, for adapters that can't resolve the slug from
+  // the cwd remote. Optional: GitHub resolves from origin.
   repoOwner: z.string().optional(),
   repoName: z.string().optional(),
   requestId: z.string(),
@@ -3425,6 +3476,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPushRequestSchema,
   CheckoutRefreshRequestSchema,
   CheckoutDiscardChangesRequestSchema,
+  CheckoutAbortMergeRequestSchema,
+  CheckoutContinueMergeRequestSchema,
   CheckoutPrCreateRequestSchema,
   CheckoutPrMergeRequestSchema,
   CheckoutForgeSetAutoMergeRequestSchema,
@@ -3432,6 +3485,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeReplyCommentRequestSchema,
   CheckoutForgeResolveThreadRequestSchema,
   CheckoutForgeRequestReviewRequestSchema,
+  CheckoutForgeRerunChecksRequestSchema,
+  CheckoutFileRangeRequestSchema,
   CheckoutCommitsListRequestSchema,
   CheckoutCommitFileDiffRequestSchema,
   CheckoutForgeGetCheckDetailsRequestSchema,
@@ -3726,6 +3781,16 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutForgeResolveThread: z.boolean().optional(),
         // COMPAT(checkoutForgeRequestReview): added in v0.11.0, remove gate after 2027-10-08.
         checkoutForgeRequestReview: z.boolean().optional(),
+        // COMPAT(checkoutForgeRerunChecks): added in v0.11.2, remove gate after 2027-10-13.
+        checkoutForgeRerunChecks: z.boolean().optional(),
+        // COMPAT(checkoutFileRange): added in v0.11.2, remove gate after 2027-10-13.
+        checkoutFileRange: z.boolean().optional(),
+        // COMPAT(gitConflictState): added in v0.11.3, remove gate after 2027-10-13.
+        // Daemon reports working-tree conflict paths + operation in checkout status.
+        gitConflictState: z.boolean().optional(),
+        // COMPAT(checkoutConflictResolution): added in v0.11.3, remove gate after 2027-10-13.
+        // Daemon serves checkout.abort_merge / checkout.continue_merge RPCs.
+        checkoutConflictResolution: z.boolean().optional(),
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising and
         // consuming it after 2027-01-17 once supported floors are >= v0.2.0.
@@ -5420,6 +5485,11 @@ const AheadBehindSchema = z.object({
   behind: z.number(),
 });
 
+// The git operation that left the working tree with unmerged paths. Kept open on
+// the wire so a newer daemon can report an operation an older client won't know.
+export const GitConflictOperationSchema = z.enum(["merge", "rebase", "cherry-pick", "revert"]);
+export type GitConflictOperation = z.infer<typeof GitConflictOperationSchema>;
+
 const CheckoutStatusCommonSchema = z.object({
   cwd: z.string(),
   error: CheckoutErrorSchema.nullable(),
@@ -5450,6 +5520,12 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
 const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(true),
   isPaseoOwnedWorktree: z.literal(false),
+  // COMPAT(gitConflictState): added in v0.11.3, remove gate after 2027-10-13.
+  // Working-tree paths with unmerged entries, and the in-progress operation that
+  // produced them. Older daemons omit both; the client gates on
+  // server_info.features.gitConflictState and otherwise shows no conflict UI.
+  conflictedPaths: z.array(z.string()).optional(),
+  conflictOperation: GitConflictOperationSchema.nullable().optional(),
   repoRoot: z.string(),
   mainRepoRoot: z.string().nullable().optional().default(null),
   currentBranch: z.string().nullable(),
@@ -5465,6 +5541,10 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
 const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(true),
   isPaseoOwnedWorktree: z.literal(true),
+  // COMPAT(gitConflictState): added in v0.11.3, remove gate after 2027-10-13. See
+  // the non-Paseo variant above for semantics.
+  conflictedPaths: z.array(z.string()).optional(),
+  conflictOperation: GitConflictOperationSchema.nullable().optional(),
   repoRoot: z.string(),
   mainRepoRoot: z.string(),
   currentBranch: z.string().nullable(),
@@ -5722,6 +5802,26 @@ export const CheckoutPushResponseSchema = z.object({
   }),
 });
 
+export const CheckoutAbortMergeResponseSchema = z.object({
+  type: z.literal("checkout.abort_merge.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutContinueMergeResponseSchema = z.object({
+  type: z.literal("checkout.continue_merge.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutRefreshResponseSchema = z.object({
   type: z.literal("checkout.refresh.response"),
   payload: z.object({
@@ -5807,6 +5907,27 @@ export const CheckoutForgeRequestReviewResponseSchema = z.object({
   payload: z.object({
     cwd: z.string(),
     success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutForgeRerunChecksResponseSchema = z.object({
+  type: z.literal("checkout.forge.rerun_checks.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutFileRangeResponseSchema = z.object({
+  type: z.literal("checkout.file_range.response"),
+  payload: z.object({
+    cwd: z.string(),
+    // The requested lines (fewer than asked if the range hit EOF). Null on error.
+    lines: z.array(z.string()).nullable(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -7264,6 +7385,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
+  CheckoutAbortMergeResponseSchema,
+  CheckoutContinueMergeResponseSchema,
   CheckoutPushResponseSchema,
   CheckoutRefreshResponseSchema,
   CheckoutDiscardChangesResponseSchema,
@@ -7274,6 +7397,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutForgeReplyCommentResponseSchema,
   CheckoutForgeResolveThreadResponseSchema,
   CheckoutForgeRequestReviewResponseSchema,
+  CheckoutForgeRerunChecksResponseSchema,
+  CheckoutFileRangeResponseSchema,
   CheckoutCommitsListResponseSchema,
   CheckoutCommitFileDiffResponseSchema,
   CheckoutForgeGetCheckDetailsResponseSchema,
@@ -7635,6 +7760,10 @@ export type CheckoutPullRequest = z.infer<typeof CheckoutPullRequestSchema>;
 export type CheckoutPullResponse = z.infer<typeof CheckoutPullResponseSchema>;
 export type CheckoutPushRequest = z.infer<typeof CheckoutPushRequestSchema>;
 export type CheckoutPushResponse = z.infer<typeof CheckoutPushResponseSchema>;
+export type CheckoutAbortMergeRequest = z.infer<typeof CheckoutAbortMergeRequestSchema>;
+export type CheckoutAbortMergeResponse = z.infer<typeof CheckoutAbortMergeResponseSchema>;
+export type CheckoutContinueMergeRequest = z.infer<typeof CheckoutContinueMergeRequestSchema>;
+export type CheckoutContinueMergeResponse = z.infer<typeof CheckoutContinueMergeResponseSchema>;
 export type CheckoutRefreshRequest = z.infer<typeof CheckoutRefreshRequestSchema>;
 export type CheckoutRefreshResponse = z.infer<typeof CheckoutRefreshResponseSchema>;
 export type CheckoutDiscardChangesRequest = z.infer<typeof CheckoutDiscardChangesRequestSchema>;
@@ -7678,6 +7807,12 @@ export type CheckoutForgeResolveThreadResponse = z.infer<
 export type CheckoutForgeRequestReviewRequest = z.infer<
   typeof CheckoutForgeRequestReviewRequestSchema
 >;
+export type CheckoutForgeRerunChecksRequest = z.infer<typeof CheckoutForgeRerunChecksRequestSchema>;
+export type CheckoutForgeRerunChecksResponse = z.infer<
+  typeof CheckoutForgeRerunChecksResponseSchema
+>;
+export type CheckoutFileRangeRequest = z.infer<typeof CheckoutFileRangeRequestSchema>;
+export type CheckoutFileRangeResponse = z.infer<typeof CheckoutFileRangeResponseSchema>;
 export type CheckoutForgeRequestReviewResponse = z.infer<
   typeof CheckoutForgeRequestReviewResponseSchema
 >;

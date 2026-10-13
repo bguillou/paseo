@@ -862,6 +862,18 @@ export const ru: TranslationResources = {
           pending: "Обновление...",
           success: "Обновлено",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "Архивировать рабочее пространство",
           pending: "Архивирование...",
@@ -962,6 +974,27 @@ export const ru: TranslationResources = {
           unpushedCommits: "Неотправленных коммитов: {{count}}",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "Открыть вкладку «Изменения»",
         openDiffTab: "Открыть вкладку «Дифф»",
@@ -995,6 +1028,9 @@ export const ru: TranslationResources = {
         seeCommittedChanges: "Показать зафиксированные изменения",
         checkingRepository: "Проверяем репозиторий...",
         notRepository: "Это не репозиторий Git",
+        expandUp: "Показать строки выше",
+        expandDown: "Показать строки ниже",
+        expandAll: "Показать все скрытые строки",
         diffMode: "Режим диффа",
         uncommitted: "Незафиксированные изменения",
         committed: "Зафиксированные изменения",
@@ -1003,6 +1039,7 @@ export const ru: TranslationResources = {
         newFile: "Новый",
         deletedFile: "Файл удалён",
         modifiedFile: "Файл изменён",
+        conflictedFile: "Conflicted",
         commits: {
           title: "Коммиты",
           countLabel: "Коммитов в рабочем пространстве: {{count}}",
@@ -1036,6 +1073,9 @@ export const ru: TranslationResources = {
           openInDiff: "Открыть в диффе",
           showResolved: "Показать решённые",
           hideResolved: "Скрыть решённые",
+          rerun: "Перезапустить",
+          rerunCheck: "Перезапустить эту проверку",
+          rerunFailed: "Перезапустить проваленные",
         },
         checksOverview: {
           headline: {
@@ -1153,6 +1193,7 @@ export const ru: TranslationResources = {
           replyFailed: "Не удалось отправить ответ",
           resolveFailed: "Не удалось обновить обсуждение",
           requestReviewFailed: "Не удалось запросить ревью",
+          rerunChecksFailed: "Не удалось перезапустить CI",
         },
       },
       forgeSetup: {
@@ -2052,6 +2093,10 @@ export const ru: TranslationResources = {
       emptyTitle: "PR пока нет",
       emptyDescription: "Создайте PR для этой рабочей копии, чтобы увидеть здесь сведения о нём.",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "Изменения",
       diffLabel: "Дифф",
@@ -2896,6 +2941,14 @@ export const ru: TranslationResources = {
           "Новые worktree используют скрипт настройки из выбранной базовой ветки.",
         teardown: "Удаление",
         teardownAccessibility: "Команды удаления worktree",
+        portStart: "Начальный порт",
+        portStartInfo:
+          "Необязательный базовый TCP-порт. Каждый worktree получает детерминированный порт (начальный порт + 10 × слот), доступный его командам как $PASEO_WORKTREE_PORT. Оставьте пустым для случайного свободного порта.",
+        portStartAccessibility: "Начальный порт worktree",
+        portStartError: {
+          invalid: "Введите целое число.",
+          range: "Порт должен быть от 1 до 65535.",
+        },
       },
       scripts: {
         title: "Скрипты",

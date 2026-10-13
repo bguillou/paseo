@@ -17,6 +17,7 @@ import {
   useHostRuntimeSnapshot,
 } from "@/runtime/host-runtime";
 import { useWorkspace, useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { usePanelStore } from "@/stores/panel-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import {
@@ -110,9 +111,28 @@ export function WorkspaceBottomDock({
     () => collectScriptTerminalIds({ pendingScriptTerminalIds: new Map(), scripts }),
     [scripts],
   );
+  // Terminals the user opened into a pane live there, not in the dock.
+  const workspaceLayout = useWorkspaceLayoutStore(
+    (state) => state.layoutByWorkspace[workspaceKey] ?? null,
+  );
+  const paneTerminalIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!workspaceLayout) return ids;
+    for (const tab of collectAllTabs(workspaceLayout.root)) {
+      if (tab.target.kind === "terminal") {
+        ids.add(tab.target.terminalId);
+      }
+    }
+    return ids;
+  }, [workspaceLayout]);
   const standaloneTerminalIds = useMemo(
-    () => collectStandaloneTerminalIds({ terminals, scriptTerminalIds }),
-    [terminals, scriptTerminalIds],
+    () =>
+      collectStandaloneTerminalIds({
+        terminals,
+        scriptTerminalIds,
+        excludedTerminalIds: paneTerminalIds,
+      }),
+    [terminals, scriptTerminalIds, paneTerminalIds],
   );
 
   const [activeTab, setActiveTab] = useState<DockTab>({ kind: "setup" });

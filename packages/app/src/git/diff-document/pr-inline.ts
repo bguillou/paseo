@@ -1,8 +1,9 @@
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 
-// Fixed row heights, mirroring the local review-draft overlay: the canvas reserves
-// space by computed height (it never measures the rendered DOM), so each piece has a
-// known size and comment bodies are truncated to fit. Full text stays in the list.
+// The canvas reserves overlay space by computed height. Comment bodies render
+// markdown + image previews (like the activity list), whose height is dynamic, so
+// each card reports its measured height (see `commentHeights`) and the reservation
+// uses it; this constant is only the pre-measurement fallback.
 export const PR_INLINE_COMMENT_HEIGHT = 68;
 export const PR_INLINE_EDITOR_HEIGHT = 140;
 export const PR_INLINE_REPLY_BUTTON_HEIGHT = 34;
@@ -47,11 +48,22 @@ export interface PrInlineActions {
   onAddThreadToChat?: (threadKey: string) => void;
   /** Resolves/reopens the thread. Undefined when the daemon can't resolve threads. */
   onResolveThread?: (input: { threadKey: string; resolved: boolean }) => void;
+  /** Measured rendered height per comment id; absent entries use the fallback height. */
+  commentHeights: ReadonlyMap<string, number>;
+  /** Reports a comment's measured height so the canvas reserves the right space. */
+  onMeasureCommentHeight: (commentId: string, height: number) => void;
 }
 
-function threadBlockHeight(thread: PrInlineThreadData, open: boolean): number {
+function threadBlockHeight(
+  thread: PrInlineThreadData,
+  open: boolean,
+  commentHeights: ReadonlyMap<string, number>,
+): number {
   const commentsHeight =
-    thread.comments.length * PR_INLINE_COMMENT_HEIGHT +
+    thread.comments.reduce(
+      (total, comment) => total + (commentHeights.get(comment.id) ?? PR_INLINE_COMMENT_HEIGHT),
+      0,
+    ) +
     Math.max(0, thread.comments.length - 1) * PR_INLINE_GAP;
   const composerHeight = open ? PR_INLINE_EDITOR_HEIGHT : PR_INLINE_REPLY_BUTTON_HEIGHT;
   // The resolved/outdated badge row renders above the comments when present.
@@ -78,7 +90,12 @@ export function getPrInlineThreadState(input: {
     PR_INLINE_VERTICAL_PADDING * 2 +
     threads.reduce(
       (total, thread) =>
-        total + threadBlockHeight(thread, prReviewActions.openComposerKeys.has(thread.key)),
+        total +
+        threadBlockHeight(
+          thread,
+          prReviewActions.openComposerKeys.has(thread.key),
+          prReviewActions.commentHeights,
+        ),
       0,
     ) +
     Math.max(0, threads.length - 1) * PR_INLINE_GAP;
@@ -127,5 +144,10 @@ export function prInlineGeometryKey(prReviewActions?: PrInlineActions): string {
     ])
     .sort(([left], [right]) => String(left).localeCompare(String(right)));
   const open = [...prReviewActions.openComposerKeys].sort();
-  return JSON.stringify([threads, open]);
+  // Measured comment heights change the reserved overlay space, so a change here
+  // must re-key the diff model to trigger a repaint at the new height.
+  const heights = [...prReviewActions.commentHeights.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return JSON.stringify([threads, open, heights]);
 }

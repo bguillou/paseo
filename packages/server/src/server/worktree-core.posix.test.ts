@@ -138,6 +138,50 @@ function createGitRepoWithOriginMain(): { tempDir: string; repoDir: string; pase
   return { tempDir, repoDir, paseoHome };
 }
 
+function createGitRepoWithStaleOriginMain(): {
+  tempDir: string;
+  repoDir: string;
+  paseoHome: string;
+  originTipOid: string;
+  staleLocalOid: string;
+} {
+  const { tempDir, repoDir, paseoHome } = createGitRepo();
+  const remoteDir = path.join(tempDir, "origin.git");
+  execFileSync("git", ["clone", "--bare", repoDir, remoteDir], { stdio: "pipe" });
+  execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["fetch", "origin"], { cwd: repoDir, stdio: "pipe" });
+  const staleLocalOid = execFileSync("git", ["rev-parse", "refs/heads/main"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  // Advance origin/main from a separate clone so the repo's local main stays behind.
+  const advanceDir = path.join(tempDir, "advance-clone");
+  execFileSync("git", ["clone", remoteDir, advanceDir], { stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@test.com"], {
+    cwd: advanceDir,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: advanceDir, stdio: "pipe" });
+  writeFileSync(path.join(advanceDir, "origin-only.txt"), "from-origin\n");
+  execFileSync("git", ["add", "origin-only.txt"], { cwd: advanceDir, stdio: "pipe" });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "advance origin main"], {
+    cwd: advanceDir,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["push", "origin", "main"], { cwd: advanceDir, stdio: "pipe" });
+  const originTipOid = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: advanceDir,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  return { tempDir, repoDir, paseoHome, originTipOid, staleLocalOid };
+}
+
 function createGitHubPrRemoteRepo(): { tempDir: string; repoDir: string; paseoHome: string } {
   const { tempDir, repoDir, paseoHome } = createGitRepo();
   const featureBranch = "feature/review-pr";
@@ -441,6 +485,39 @@ describe.skipIf(isPlatform("win32"))("worktree-core POSIX-only", () => {
         baseBranch: "main",
         branchName: "no-upstream-feature",
       });
+      expect(getBranchUpstream(result.worktree.worktreePath)).toBeNull();
+    });
+
+    test("fast-forwards a stale local default branch before cutting the branch-off worktree", async () => {
+      const { tempDir, repoDir, paseoHome, originTipOid, staleLocalOid } =
+        createGitRepoWithStaleOriginMain();
+      cleanupPaths.push(tempDir);
+
+      // Sanity: the repo starts behind origin.
+      expect(staleLocalOid).not.toBe(originTipOid);
+
+      const result = await createCoreWorktree(
+        {
+          cwd: repoDir,
+          worktreeSlug: "stale-main-feature",
+          action: "branch-off",
+          refName: "main",
+          paseoHome,
+          runSetup: false,
+        },
+        createCoreDeps(),
+      );
+
+      const localMainOid = execFileSync("git", ["rev-parse", "refs/heads/main"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+      // The clean, checked-out local main was fast-forwarded to the origin tip, and the new
+      // worktree starts from that fresh commit without tracking origin.
+      expect(localMainOid).toBe(originTipOid);
+      expect(existsSync(path.join(result.worktree.worktreePath, "origin-only.txt"))).toBe(true);
       expect(getBranchUpstream(result.worktree.worktreePath)).toBeNull();
     });
 

@@ -855,6 +855,18 @@ export const ko: TranslationResources = {
           pending: "업데이트하는 중...",
           success: "업데이트됨",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "워크스페이스 보관",
           pending: "보관하는 중...",
@@ -952,6 +964,27 @@ export const ko: TranslationResources = {
           unpushedCommits: "푸시되지 않은 커밋 {{count}}개",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "변경사항 탭 열기",
         openDiffTab: "Diff 탭 열기",
@@ -985,6 +1018,9 @@ export const ko: TranslationResources = {
         seeCommittedChanges: "커밋된 변경 사항 보기",
         checkingRepository: "저장소 확인 중...",
         notRepository: "Git 저장소가 아닙니다",
+        expandUp: "위쪽 줄 펼치기",
+        expandDown: "아래쪽 줄 펼치기",
+        expandAll: "숨겨진 줄 모두 펼치기",
         diffMode: "Diff 모드",
         uncommitted: "커밋되지 않음",
         committed: "커밋됨",
@@ -993,6 +1029,7 @@ export const ko: TranslationResources = {
         newFile: "신규",
         deletedFile: "삭제됨",
         modifiedFile: "수정됨",
+        conflictedFile: "Conflicted",
         commits: {
           title: "커밋",
           countLabel: "워크스페이스 커밋 {{count}}개",
@@ -1026,6 +1063,9 @@ export const ko: TranslationResources = {
           openInDiff: "Diff에서 열기",
           showResolved: "해결된 항목 표시",
           hideResolved: "해결된 항목 숨기기",
+          rerun: "다시 실행",
+          rerunCheck: "이 체크 다시 실행",
+          rerunFailed: "실패 다시 실행",
         },
         checksOverview: {
           headline: {
@@ -1143,6 +1183,7 @@ export const ko: TranslationResources = {
           replyFailed: "답글을 게시할 수 없습니다",
           resolveFailed: "스레드를 업데이트할 수 없습니다",
           requestReviewFailed: "리뷰를 요청할 수 없습니다",
+          rerunChecksFailed: "CI를 다시 실행할 수 없습니다",
         },
       },
       forgeSetup: {
@@ -2029,6 +2070,10 @@ export const ko: TranslationResources = {
       emptyTitle: "아직 풀 리퀘스트가 없습니다",
       emptyDescription: "이 체크아웃에 풀 리퀘스트를 만들면 세부 정보가 여기에 표시됩니다.",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "변경 사항",
       diffLabel: "Diff",
@@ -2858,6 +2903,14 @@ export const ko: TranslationResources = {
         uncommittedDescription: "새 워크트리는 선택한 기본 브랜치의 설정 스크립트를 사용합니다.",
         teardown: "정리",
         teardownAccessibility: "워크트리 정리 명령",
+        portStart: "시작 포트",
+        portStartInfo:
+          "선택적 기본 TCP 포트입니다. 각 워크트리는 결정적 포트(시작 포트 + 10 × 슬롯)를 받으며, 명령에는 $PASEO_WORKTREE_PORT로 전달됩니다. 비워 두면 무작위 빈 포트를 사용합니다.",
+        portStartAccessibility: "워크트리 시작 포트",
+        portStartError: {
+          invalid: "정수를 입력하세요.",
+          range: "포트는 1에서 65535 사이여야 합니다.",
+        },
       },
       scripts: {
         title: "스크립트",

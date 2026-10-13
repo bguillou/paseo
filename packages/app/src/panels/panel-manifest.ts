@@ -78,6 +78,13 @@ const manifests = {
     singleton: false,
     resourceKey: () => "pull_request",
   },
+  git_status: {
+    kind: "git_status",
+    supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: true,
+    resourceKey: () => "git_status",
+  },
   file: {
     kind: "file",
     supportedHosts: ["main", "explorer"],

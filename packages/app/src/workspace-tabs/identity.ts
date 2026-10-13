@@ -219,7 +219,12 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "working_diff") {
     return "working_diff";
   }
-  if (target.kind === "changes_tree" || target.kind === "files" || target.kind === "pull_request") {
+  if (
+    target.kind === "changes_tree" ||
+    target.kind === "files" ||
+    target.kind === "pull_request" ||
+    target.kind === "git_status"
+  ) {
     return target.kind;
   }
   if (target.kind === "plugin") {

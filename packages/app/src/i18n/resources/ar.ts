@@ -854,6 +854,18 @@ export const ar: TranslationResources = {
           pending: "جارٍ التحديث...",
           success: "تم التحديث",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "أرشفة مساحة العمل",
           pending: "أرشفة...",
@@ -945,6 +957,27 @@ export const ar: TranslationResources = {
           unpushedCommits: "التزامات{{count}}غير المدفوعة",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "فتح علامة تبويب التغييرات",
         openDiffTab: "فتح علامة تبويب الفرق",
@@ -978,6 +1011,9 @@ export const ar: TranslationResources = {
         seeCommittedChanges: "عرض التغييرات الملتزم بها",
         checkingRepository: "فحص المستودع...",
         notRepository: "ليس مستودع جيت",
+        expandUp: "إظهار الأسطر للأعلى",
+        expandDown: "إظهار الأسطر للأسفل",
+        expandAll: "إظهار جميع الأسطر المخفية",
         diffMode: "وضع الفرق",
         uncommitted: "غير ملتزم",
         committed: "ملتزم",
@@ -986,6 +1022,7 @@ export const ar: TranslationResources = {
         newFile: "جديد",
         deletedFile: "تم الحذف",
         modifiedFile: "معدّل",
+        conflictedFile: "Conflicted",
         commits: {
           title: "الإيداعات",
           countLabel: "{{count}} من إيداعات مساحة العمل",
@@ -1019,6 +1056,9 @@ export const ar: TranslationResources = {
           openInDiff: "فتح في الفرق",
           showResolved: "إظهار المحلولة",
           hideResolved: "إخفاء المحلولة",
+          rerun: "إعادة التشغيل",
+          rerunCheck: "إعادة تشغيل هذا الفحص",
+          rerunFailed: "إعادة تشغيل الفاشلة",
         },
         checksOverview: {
           headline: {
@@ -1136,6 +1176,7 @@ export const ar: TranslationResources = {
           replyFailed: "تعذّر نشر الرد",
           resolveFailed: "تعذّر تحديث السلسلة",
           requestReviewFailed: "تعذّر طلب المراجعة",
+          rerunChecksFailed: "تعذّر إعادة تشغيل الـ CI",
         },
       },
       forgeSetup: {
@@ -2019,6 +2060,10 @@ export const ar: TranslationResources = {
       emptyTitle: "لا يوجد طلب سحب بعد",
       emptyDescription: "أنشئ طلب سحب لنسخة العمل هذه لعرض تفاصيله هنا.",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "التغييرات",
       diffLabel: "الفرق",
@@ -2844,6 +2889,14 @@ export const ar: TranslationResources = {
           "تستخدم أشجار العمل الجديدة نص الإعداد البرمجي من الفرع الأساسي الذي تحدده.",
         teardown: "هدم",
         teardownAccessibility: "أوامر هدم شجرة العمل",
+        portStart: "منفذ البداية",
+        portStartInfo:
+          "منفذ TCP أساسي اختياري. يحصل كل worktree على منفذ حتمي (منفذ البداية + 10 × الفتحة)، ويُتاح لأوامره عبر $PASEO_WORKTREE_PORT. اتركه فارغًا للحصول على منفذ حر عشوائي.",
+        portStartAccessibility: "منفذ بداية شجرة العمل",
+        portStartError: {
+          invalid: "أدخل رقمًا صحيحًا.",
+          range: "يجب أن يكون المنفذ بين 1 و65535.",
+        },
       },
       scripts: {
         title: "البرامج النصية",

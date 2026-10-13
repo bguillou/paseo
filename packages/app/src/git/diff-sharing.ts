@@ -47,6 +47,42 @@ export function shareCommitFileDiff(
     : next;
 }
 
+/**
+ * Compact content signature for a file's diff. "Viewed" state keys off this so
+ * it auto-clears when the file's diff changes (matching GitHub). Content-based,
+ * so it is stable across reloads where object identity is not. FNV-1a over the
+ * same fields `equalFile` compares.
+ */
+export function computeDiffFileSignature(file: ParsedDiffFile): string {
+  let hash = 0x811c9dc5;
+  const mix = (value: string | number): void => {
+    const text = typeof value === "number" ? String(value) : value;
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+    }
+    // Field separator so adjacent values can't merge ("a","b" vs "ab").
+    hash = Math.imul(hash ^ 0x1f, 0x01000193);
+  };
+  mix(file.path);
+  mix(file.oldPath ?? "");
+  mix(file.status ?? "");
+  mix(file.isNew ? 1 : 0);
+  mix(file.isDeleted ? 1 : 0);
+  mix(file.additions);
+  mix(file.deletions);
+  for (const hunk of file.hunks) {
+    mix(hunk.oldStart);
+    mix(hunk.oldCount);
+    mix(hunk.newStart);
+    mix(hunk.newCount);
+    for (const line of hunk.lines) {
+      mix(line.type);
+      mix(line.content);
+    }
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function equalFile(left: ParsedDiffFile, right: ParsedDiffFile): boolean {
   if (left === right) return true;
   if (

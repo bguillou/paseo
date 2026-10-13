@@ -12,8 +12,15 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { InlineReviewAddButton, InlineReviewThread } from "@/review";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react-native";
 import { PrInlineThread } from "./pr-inline-thread";
 import type { PrInlineActions, PrInlineThreadData } from "./pr-inline";
+import {
+  computeExpandableGaps,
+  EXPAND_CONTEXT_CHUNK,
+  type DiffContextGap,
+  type ExpandDirection,
+} from "./expand-context";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 import { findFocusLineTop } from "./focus-line";
@@ -163,6 +170,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     readyTypographyResource === typographyResource ? typographyResource.measureText : null;
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
   const prReviewActions = props.mode.kind === "working" ? props.mode.prReviewActions : undefined;
+  const onExpandGap = props.mode.kind === "working" ? props.mode.onExpandGap : undefined;
   const model = useMemo(() => {
     if (!loadedTypography || !measurement) {
       return emptyDiffDocumentModel({
@@ -908,6 +916,9 @@ export function DiffSurface(props: DiffSurfaceProps) {
                 });
               })
             : null}
+          {onExpandGap ? (
+            <WebExpandControls model={model} onExpandGap={onExpandGap} palette={props.palette} />
+          ) : null}
         </div>
       </div>
       <DomOverlayScrollbar scrollContainerRef={scrollRef} onUserScrollUp={noop} />
@@ -1062,6 +1073,156 @@ function preventDocumentMouseSelection(event: React.MouseEvent): void {
   if (target instanceof Element && target.closest('[data-diff-review="true"]')) return;
   event.preventDefault();
   window.getSelection()?.removeAllRanges();
+}
+
+/** Expand-context affordances in the gutter of each hunk header row. */
+function WebExpandControls({
+  model,
+  onExpandGap,
+  palette,
+}: {
+  model: ReturnType<typeof buildDiffDocumentModel>;
+  onExpandGap: (path: string, gap: DiffContextGap, direction: ExpandDirection) => void;
+  palette: DiffSurfaceProps["palette"];
+}) {
+  const gapsByPath = useMemo(() => {
+    const map = new Map<string, { gaps: Map<number, DiffContextGap>; gutterWidth: number }>();
+    for (const section of model.files) {
+      const gaps = new Map<number, DiffContextGap>();
+      for (const gap of computeExpandableGaps(section.file)) {
+        gaps.set(gap.hunkIndex, gap);
+      }
+      if (gaps.size > 0) {
+        map.set(section.path, { gaps, gutterWidth: section.gutterWidth });
+      }
+    }
+    return map;
+  }, [model.files]);
+  return (
+    <>
+      {model.rows.map((row) => {
+        if (row.kind !== "line") return null;
+        const headerCell = row.cells[0];
+        if (!headerCell || headerCell.type !== "header") return null;
+        const entry = gapsByPath.get(row.path);
+        const gap = entry?.gaps.get(headerCell.sourceIdentity.hunkIndex);
+        if (!gap || !entry) return null;
+        return (
+          <WebExpandControl
+            key={`${row.path}:${gap.hunkIndex}`}
+            gap={gap}
+            path={row.path}
+            top={row.top}
+            height={row.height}
+            width={entry.gutterWidth}
+            palette={palette}
+            onExpandGap={onExpandGap}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function WebExpandControl({
+  gap,
+  path,
+  top,
+  height,
+  width,
+  palette,
+  onExpandGap,
+}: {
+  gap: DiffContextGap;
+  path: string;
+  top: number;
+  height: number;
+  width: number;
+  palette: DiffSurfaceProps["palette"];
+  onExpandGap: (path: string, gap: DiffContextGap, direction: ExpandDirection) => void;
+}) {
+  const { t } = useTranslation();
+  const containerStyle = useMemo<React.CSSProperties>(
+    () => ({
+      position: "absolute",
+      top,
+      left: 0,
+      height,
+      width: Math.max(width, 22),
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 1,
+      zIndex: 3,
+    }),
+    [height, top, width],
+  );
+  const buttonStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: 16,
+      height: 16,
+      padding: 0,
+      border: "none",
+      borderRadius: 3,
+      cursor: "pointer",
+      background: palette.headerSurface,
+      color: palette.foregroundMuted,
+    }),
+    [palette.foregroundMuted, palette.headerSurface],
+  );
+  const expand = useCallback(
+    (direction: ExpandDirection, event: React.MouseEvent) => {
+      event.stopPropagation();
+      onExpandGap(path, gap, direction);
+    },
+    [gap, onExpandGap, path],
+  );
+  const expandAll = useCallback((event: React.MouseEvent) => expand("all", event), [expand]);
+  const expandUp = useCallback((event: React.MouseEvent) => expand("up", event), [expand]);
+  const expandDown = useCallback((event: React.MouseEvent) => expand("down", event), [expand]);
+  const stopMouseDown = useCallback((event: React.MouseEvent) => event.stopPropagation(), []);
+  const small = gap.size <= EXPAND_CONTEXT_CHUNK;
+  return (
+    <div style={containerStyle} data-diff-expand="true" onMouseDown={stopMouseDown}>
+      {small ? (
+        <button
+          type="button"
+          style={buttonStyle}
+          aria-label={t("workspace.git.diff.expandAll")}
+          data-testid="diff-expand-all"
+          onClick={expandAll}
+        >
+          <ChevronsUpDown size={12} color={palette.foregroundMuted} />
+        </button>
+      ) : (
+        <>
+          {gap.aboveHunkIndex !== null ? (
+            <button
+              type="button"
+              style={buttonStyle}
+              aria-label={t("workspace.git.diff.expandDown")}
+              data-testid="diff-expand-down"
+              onClick={expandDown}
+            >
+              <ChevronDown size={12} color={palette.foregroundMuted} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            style={buttonStyle}
+            aria-label={t("workspace.git.diff.expandUp")}
+            data-testid="diff-expand-up"
+            onClick={expandUp}
+          >
+            <ChevronUp size={12} color={palette.foregroundMuted} />
+          </button>
+        </>
+      )}
+    </div>
+  );
 }
 
 function WebReviewThread({

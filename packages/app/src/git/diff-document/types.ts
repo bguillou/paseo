@@ -2,6 +2,7 @@ import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 import type { PrInlineActions } from "./pr-inline";
+import type { DiffContextGap, ExpandDirection } from "./expand-context";
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
@@ -36,6 +37,8 @@ export interface WorkingDiffMode {
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
+  /** Reveals hidden context in a gap. Absent when the daemon can't read file ranges. */
+  onExpandGap?: (path: string, gap: DiffContextGap, direction: ExpandDirection) => void;
 }
 
 export type DiffDocumentProps = DiffDocumentBaseProps &

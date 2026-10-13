@@ -1208,11 +1208,12 @@ function WorkspaceScreenContent({
     onTerminalCreateQueued: handleTerminalCreateQueued,
     onTerminalCreateFailed: handleTerminalCreateFailed,
   });
-  // Terminals are owned by the workspace bottom dock, not the pane tab system.
-  // The only terminals allowed as workspace tabs are live script terminals that
-  // were explicitly surfaced (e.g. the header "view terminal"); standalone dock
-  // terminals must never be auto-opened here (which would render them twice and
-  // fight over the terminal session).
+  // Terminals default to the bottom dock, but a terminal the user explicitly
+  // opens into a pane stays as a pane tab (see knownTerminalTabIds below). The
+  // tabs allowed here as a baseline are live script terminals surfaced on demand
+  // (e.g. the header "view terminal"). Standalone dock terminals are still never
+  // auto-opened as pane tabs (standaloneTerminalIds stays empty in the snapshot),
+  // which would render them twice and fight over the terminal session.
   const workspaceTerminalTabIds = useMemo(() => {
     const live = new Set(liveTerminalIds);
     const allowed = new Set<string>();
@@ -1336,6 +1337,19 @@ function WorkspaceScreenContent({
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
   );
+  // A terminal opened into a pane stays a pane tab while it is live; a killed
+  // terminal's tab is collapsed on the next reconcile. The bottom dock excludes
+  // these (see workspace-bottom-dock) so a terminal renders in exactly one place.
+  const knownTerminalTabIds = useMemo(() => {
+    const live = new Set(liveTerminalIds);
+    const allowed = new Set(workspaceTerminalTabIds);
+    for (const tab of uiTabs) {
+      if (tab.target.kind === "terminal" && live.has(tab.target.terminalId)) {
+        allowed.add(tab.target.terminalId);
+      }
+    }
+    return allowed;
+  }, [liveTerminalIds, uiTabs, workspaceTerminalTabIds]);
   useOpenAgentTabLabels({
     client,
     serverId: normalizedServerId,
@@ -1546,7 +1560,7 @@ function WorkspaceScreenContent({
         agentVisibility: workspaceAgentVisibility,
         agentsHydrated: hasHydratedAgents,
         terminalsHydrated: terminalsQuery.isSuccess,
-        knownTerminalIds: workspaceTerminalTabIds,
+        knownTerminalIds: knownTerminalTabIds,
         standaloneTerminalIds: EMPTY_TERMINAL_IDS,
         hasActivePendingTerminalCreate:
           createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
@@ -1564,7 +1578,7 @@ function WorkspaceScreenContent({
     pendingByDraftId,
     persistenceKey,
     reconcileWorkspaceTabs,
-    workspaceTerminalTabIds,
+    knownTerminalTabIds,
     terminalsQuery.isSuccess,
     uiTabs,
     workspaceAgentVisibility,

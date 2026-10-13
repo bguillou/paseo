@@ -45,6 +45,7 @@ import {
   applyDraftToConfig,
   configToDraft,
   METADATA_PROMPT_KEYS,
+  portBaseDraftError,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
   type ProjectConfigDraft,
@@ -688,6 +689,10 @@ function ProjectConfigForm({
     (text: string) => updateDraft((d) => ({ ...d, teardownText: text })),
     [updateDraft],
   );
+  const handlePortBaseChange = useCallback(
+    (text: string) => updateDraft((d) => ({ ...d, portBaseText: text })),
+    [updateDraft],
+  );
 
   const handleMetadataPromptChange = useCallback(
     (key: MetadataPromptKey, text: string) =>
@@ -777,9 +782,17 @@ function ProjectConfigForm({
 
   const editingScript = draft.scripts.find((entry) => entry.id === editingScriptId);
 
-  const hasInvalidScripts = useMemo(
-    () => draft.scripts.some((script) => validateScript(script, t).hasErrors),
-    [draft.scripts, t],
+  // Translated inline message shown under the Port start field (null when valid).
+  const portBaseError = useMemo(() => {
+    const code = portBaseDraftError(draft.portBaseText);
+    return code ? t(`settings.project.worktree.portStartError.${code}`) : null;
+  }, [draft.portBaseText, t]);
+
+  const hasInvalidForm = useMemo(
+    () =>
+      draft.scripts.some((script) => validateScript(script, t).hasErrors) ||
+      portBaseDraftError(draft.portBaseText) !== null,
+    [draft.scripts, draft.portBaseText, t],
   );
 
   const scriptsTrailing = useMemo(
@@ -824,7 +837,7 @@ function ProjectConfigForm({
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
   const saveDisabled =
-    saveMutation.isPending || migrateMutation.isPending || isStale || hasInvalidScripts;
+    saveMutation.isPending || migrateMutation.isPending || isStale || hasInvalidForm;
   // Migration copies the committed file into the global layer, so it only makes
   // sense while editing the project file and when a committed file exists.
   const canMigrateToGlobal = supportsGlobalConfig && source === "project_file" && revision !== null;
@@ -866,7 +879,6 @@ function ProjectConfigForm({
           title={t("settings.project.worktree.teardown")}
           testID="worktree-teardown-section"
           trailing={teardownDocsLink}
-          flush
         >
           <SettingsTextAreaCard
             testID="worktree-teardown-input"
@@ -875,6 +887,31 @@ function ProjectConfigForm({
             onChangeText={handleTeardownChange}
             placeholder="docker compose down"
           />
+        </SettingsSection>
+
+        <SettingsSection
+          title={t("settings.project.worktree.portStart")}
+          info={t("settings.project.worktree.portStartInfo")}
+          testID="worktree-port-start-section"
+          flush
+        >
+          <View style={settingsStyles.card}>
+            <TextInput
+              testID="worktree-port-start-input"
+              accessibilityLabel={t("settings.project.worktree.portStartAccessibility")}
+              initialValue={draft.portBaseText}
+              onChangeText={handlePortBaseChange}
+              placeholder="3000"
+              placeholderTextColor={styles.placeholderColor.color}
+              keyboardType="number-pad"
+              style={styles.portStartInput}
+            />
+          </View>
+          {portBaseError ? (
+            <Text testID="worktree-port-start-error" style={styles.fieldError}>
+              {portBaseError}
+            </Text>
+          ) : null}
         </SettingsSection>
       </SettingsGroup>
 
@@ -1477,6 +1514,12 @@ const styles = StyleSheet.create((theme) => ({
   fieldError: {
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.sm,
+  },
+  portStartInput: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
   },
   serviceToggleRow: {
     flexDirection: "row",

@@ -1,12 +1,13 @@
 import type { ReactElement } from "react";
 import { withUnistyles } from "react-native-unistyles";
-import { SquareDot, SquareMinus, SquarePlus } from "lucide-react-native";
+import { SquareDot, SquareMinus, SquarePlus, TriangleAlert } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { Theme } from "@/styles/theme";
 
 const ThemedSquarePlus = withUnistyles(SquarePlus);
 const ThemedSquareMinus = withUnistyles(SquareMinus);
 const ThemedSquareDot = withUnistyles(SquareDot);
+const ThemedTriangleAlert = withUnistyles(TriangleAlert);
 
 const successMapping = (theme: Theme) => ({ color: theme.colors.statusSuccess });
 const dangerMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
@@ -22,9 +23,19 @@ const ICON_SIZE = 14;
 export function FileChangeIcon({
   change,
 }: {
-  change: "added" | "deleted" | "modified";
+  change: "added" | "deleted" | "modified" | "conflicted";
 }): ReactElement {
   const { t } = useTranslation();
+
+  if (change === "conflicted") {
+    return (
+      <ThemedTriangleAlert
+        size={ICON_SIZE}
+        uniProps={dangerMapping}
+        accessibilityLabel={t("workspace.git.diff.conflictedFile")}
+      />
+    );
+  }
 
   if (change === "added") {
     return (

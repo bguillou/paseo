@@ -21,6 +21,11 @@ export interface ChangedFilesTreeProps {
   onSelectFile: (path: string) => void;
   collapsedFolderPaths: string[];
   onCollapsedFolderPathsChange: (paths: string[]) => void;
+  /** Paths currently marked "viewed". Omitted when the viewed control is off. */
+  viewedPaths?: ReadonlySet<string>;
+  /** Working-tree paths with unmerged (conflict) entries, so rows can flag them. */
+  conflictedPaths?: ReadonlySet<string>;
+  onToggleViewed?: (path: string) => void;
 }
 
 /** The changed-files tree shared by the desktop Changes rail and the compact Jump to file sheet. */
@@ -30,6 +35,9 @@ export function ChangedFilesTree({
   onSelectFile,
   collapsedFolderPaths,
   onCollapsedFolderPathsChange,
+  viewedPaths,
+  conflictedPaths,
+  onToggleViewed,
 }: ChangedFilesTreeProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const compressedTree = useMemo(() => compressSingleChildChains(buildDiffTree(files)), [files]);
@@ -117,6 +125,9 @@ export function ChangedFilesTree({
           onDuplicate={mode.onDuplicate}
           onRevert={mode.onRevert}
           commentCount={mode.prReviewActions?.commentCountByPath.get(item.file.path)}
+          viewed={viewedPaths?.has(item.file.path) ?? false}
+          isConflicted={conflictedPaths?.has(item.file.path) ?? false}
+          onToggleViewed={onToggleViewed}
           testID={`diff-tree-file-${item.fileIndex}`}
         />
       );
@@ -129,6 +140,9 @@ export function ChangedFilesTree({
       collapsedFolders,
       mode,
       selectedPath,
+      viewedPaths,
+      conflictedPaths,
+      onToggleViewed,
     ],
   );
   const keyExtractor = useCallback(

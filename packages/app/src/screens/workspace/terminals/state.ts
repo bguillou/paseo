@@ -72,9 +72,15 @@ export function collectScriptTerminalIds(input: {
 export function collectStandaloneTerminalIds(input: {
   terminals: TerminalEntry[];
   scriptTerminalIds: Set<string>;
+  // Terminals owned by a pane tab are excluded so the bottom dock never renders
+  // the same terminal a pane is already showing (which would fight the session).
+  excludedTerminalIds?: ReadonlySet<string>;
 }): string[] {
   return input.terminals
-    .filter((terminal) => !input.scriptTerminalIds.has(terminal.id))
+    .filter(
+      (terminal) =>
+        !input.scriptTerminalIds.has(terminal.id) && !input.excludedTerminalIds?.has(terminal.id),
+    )
     .map((terminal) => terminal.id);
 }
 

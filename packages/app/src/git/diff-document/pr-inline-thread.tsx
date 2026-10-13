@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Text, View } from "react-native";
+import { Image, Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Check, MessageSquarePlus, Reply } from "lucide-react-native";
+import { MarkdownRenderer } from "@/components/markdown/renderer";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -13,7 +15,6 @@ import { isWeb } from "@/constants/platform";
 import { getInlineReviewThreadViewportStyle } from "@/review";
 import type { Theme } from "@/styles/theme";
 import {
-  PR_INLINE_COMMENT_HEIGHT,
   PR_INLINE_EDITOR_HEIGHT,
   PR_INLINE_REPLY_BUTTON_HEIGHT,
   type PrInlineActions,
@@ -104,7 +105,11 @@ function PrInlineThreadBlock({
         </View>
       ) : null}
       {thread.comments.map((comment) => (
-        <PrInlineCommentCard key={comment.id} comment={comment} />
+        <PrInlineCommentCard
+          key={comment.id}
+          comment={comment}
+          onMeasureHeight={actions.onMeasureCommentHeight}
+        />
       ))}
       {open ? (
         <PrInlineComposer onCancel={handleClose} onReply={handleReply} />
@@ -151,7 +156,18 @@ function PrInlineThreadBlock({
   );
 }
 
-function PrInlineCommentCard({ comment }: { comment: PrInlineComment }) {
+function handleCommentLinkPress(url: string): boolean {
+  void openExternalUrl(url);
+  return false;
+}
+
+function PrInlineCommentCard({
+  comment,
+  onMeasureHeight,
+}: {
+  comment: PrInlineComment;
+  onMeasureHeight: (commentId: string, height: number) => void;
+}) {
   const avatarSource = useMemo(
     () => (comment.avatarUrl ? { uri: comment.avatarUrl } : null),
     [comment.avatarUrl],
@@ -160,8 +176,14 @@ function PrInlineCommentCard({ comment }: { comment: PrInlineComment }) {
     () => [styles.avatar, { backgroundColor: comment.avatarColor }],
     [comment.avatarColor],
   );
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      onMeasureHeight(comment.id, event.nativeEvent.layout.height);
+    },
+    [comment.id, onMeasureHeight],
+  );
   return (
-    <View style={styles.commentCard}>
+    <View style={styles.commentCard} onLayout={handleLayout}>
       <View style={styles.commentHeader}>
         {avatarSource ? (
           <Image source={avatarSource} style={styles.avatar} />
@@ -173,9 +195,14 @@ function PrInlineCommentCard({ comment }: { comment: PrInlineComment }) {
         </Text>
         <Text style={styles.age}>{comment.age}</Text>
       </View>
-      <Text style={styles.body} numberOfLines={2}>
-        {comment.body}
-      </Text>
+      {/* Markdown + image previews match the activity list; the measured height
+          above feeds the canvas reservation so bodies aren't clipped. */}
+      <MarkdownRenderer
+        text={comment.body}
+        compact
+        imagePreview
+        onLinkPress={handleCommentLinkPress}
+      />
     </View>
   );
 }
@@ -283,7 +310,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[1],
   },
   commentCard: {
-    height: PR_INLINE_COMMENT_HEIGHT,
     gap: theme.spacing[1],
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
@@ -311,10 +337,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   age: {
     fontSize: 11,
     color: theme.colors.foregroundMuted,
-  },
-  body: {
-    fontSize: 12,
-    color: theme.colors.foreground,
   },
   actionRow: {
     height: PR_INLINE_REPLY_BUTTON_HEIGHT,

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react-native";
+import { ChevronDown, ChevronRight, MessageSquarePlus, RefreshCw } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { ICON_SIZE } from "@/styles/theme";
@@ -51,6 +51,24 @@ export function getCheckIdentity(check: PrPaneCheck): string {
   return `${check.provider}:${check.name}:${check.url}`;
 }
 
+/** A finished check with a run id can be re-run; an in-progress one cannot. */
+function canRerunCheck(check: PrPaneCheck): boolean {
+  return (
+    check.status !== "pending" &&
+    (check.detailRef?.checkRunId !== undefined || check.detailRef?.workflowRunId !== undefined)
+  );
+}
+
+/** Re-run affordances, present only when the daemon advertises the capability. */
+export interface ChecksRerunControls {
+  onRerunCheck: (check: PrPaneCheck) => void;
+  rerunningCheckKeys: ReadonlySet<string>;
+  onRerunFailed: () => void;
+  isRerunningFailed: boolean;
+  /** True when at least one failed check carries a workflow-run id to re-run. */
+  canRerunFailed: boolean;
+}
+
 interface ChecksSectionProps {
   checks: readonly PrPaneCheck[];
   open: boolean;
@@ -58,6 +76,7 @@ interface ChecksSectionProps {
   attachEnabled: boolean;
   loadingCheckKeys: ReadonlySet<string>;
   onAddLogsToChat: (check: PrPaneCheck) => void;
+  rerun?: ChecksRerunControls;
 }
 
 /**
@@ -71,6 +90,7 @@ export function ChecksSection({
   attachEnabled,
   loadingCheckKeys,
   onAddLogsToChat,
+  rerun,
 }: ChecksSectionProps) {
   const { t } = useTranslation();
   const summary = useMemo(() => summarizeChecks(checks, t), [checks, t]);
@@ -126,6 +146,7 @@ export function ChecksSection({
               attachEnabled={attachEnabled}
               loadingCheckKeys={loadingCheckKeys}
               onAddLogsToChat={onAddLogsToChat}
+              rerun={rerun}
             />
           ))}
         </ScrollView>
@@ -141,6 +162,7 @@ function CheckGroup({
   attachEnabled,
   loadingCheckKeys,
   onAddLogsToChat,
+  rerun,
 }: {
   group: ChecksGroup;
   collapsed: boolean;
@@ -148,12 +170,38 @@ function CheckGroup({
   attachEnabled: boolean;
   loadingCheckKeys: ReadonlySet<string>;
   onAddLogsToChat: (check: PrPaneCheck) => void;
+  rerun?: ChecksRerunControls;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onToggle(group.status), [group.status, onToggle]);
+  const handleRerunFailed = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      rerun?.onRerunFailed();
+    },
+    [rerun],
+  );
+  const showRerunFailed = rerun && group.status === "failure" && rerun.canRerunFailed;
   return (
     <View testID={`pr-pane-check-group-${group.status}`}>
       <Pressable onPress={handlePress} style={styles.groupHeader} accessibilityRole="button">
         <Text style={styles.groupLabel}>{group.label}</Text>
+        {showRerunFailed ? (
+          <>
+            <View style={styles.groupHeaderSpacer} />
+            <Button
+              variant="ghost"
+              size="xs"
+              leftIcon={RefreshCw}
+              loading={rerun.isRerunningFailed}
+              onPress={handleRerunFailed}
+              style={styles.rerunFailedButton}
+              testID="pr-pane-rerun-failed"
+            >
+              {t("workspace.git.pr.actions.rerunFailed")}
+            </Button>
+          </>
+        ) : null}
         {collapsed ? (
           <ThemedChevronRight size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
         ) : (
@@ -171,6 +219,8 @@ function CheckGroup({
                 attachEnabled={attachEnabled}
                 isAddingLogsToChat={loadingCheckKeys.has(checkKey)}
                 onAddLogsToChat={onAddLogsToChat}
+                rerun={rerun}
+                isRerunning={rerun?.rerunningCheckKeys.has(checkKey) ?? false}
               />
             );
           })}
@@ -183,11 +233,15 @@ function CheckRow({
   attachEnabled,
   isAddingLogsToChat,
   onAddLogsToChat,
+  rerun,
+  isRerunning,
 }: {
   check: PrPaneCheck;
   attachEnabled: boolean;
   isAddingLogsToChat: boolean;
   onAddLogsToChat: (check: PrPaneCheck) => void;
+  rerun?: ChecksRerunControls;
+  isRerunning: boolean;
 }) {
   const { t } = useTranslation();
   const handlePress = useCallback(() => {
@@ -200,6 +254,14 @@ function CheckRow({
     },
     [check, onAddLogsToChat],
   );
+  const handleRerun = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      rerun?.onRerunCheck(check);
+    },
+    [check, rerun],
+  );
+  const showRerun = rerun !== undefined && canRerunCheck(check);
   return (
     <Pressable onPress={handlePress} style={rowPressableStyle} testID="pr-pane-check-row">
       <CheckPresentationIcon presentation={classifyCheck(check)} size={14} />
@@ -212,6 +274,20 @@ function CheckRow({
         </Text>
       )}
       <View style={sectionKitStyles.checkTrailing}>
+        {showRerun ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={RefreshCw}
+            loading={isRerunning}
+            onPress={handleRerun}
+            style={styles.addButton}
+            accessibilityLabel={t("workspace.git.pr.actions.rerunCheck")}
+            testID="pr-pane-rerun-check"
+          >
+            {t("workspace.git.pr.actions.rerun")}
+          </Button>
+        ) : null}
         {attachEnabled && canAddPullRequestCheckLogsToChat(check) ? (
           <Button
             variant="ghost"
@@ -280,6 +356,13 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
+  },
+  groupHeaderSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rerunFailedButton: {
+    paddingHorizontal: theme.spacing[1],
   },
   hoverable: {
     backgroundColor: theme.colors.surfaceSidebarHover,

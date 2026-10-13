@@ -39,7 +39,11 @@ import {
   writePaseoWorktreeRuntimeMetadata,
 } from "./worktree-metadata.js";
 import { runGitCommand } from "./run-git-command.js";
-import { getCurrentBranch, resolveRepositoryDefaultBranch } from "./checkout-git.js";
+import {
+  getCurrentBranch,
+  hasOriginRemote,
+  resolveRepositoryDefaultBranch,
+} from "./checkout-git.js";
 import { spawnProcess } from "./spawn.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
@@ -1456,10 +1460,19 @@ async function resolveBranchOffWorktreeSourcePlan(
   const branchName = source.branchName;
   await validateGitBranchName(cwd, branchName);
   const normalizedBaseBranch = normalizeRequiredBaseBranch(source.baseBranch);
-  const resolvedBaseBranch = await resolveBaseBranchForWorktree(cwd, source.baseBranch);
   const branchExists = await localBranchExists(cwd, branchName);
+
+  let resolvedBaseBranch: string;
+  if (await isDefaultBranchBaseForSync(cwd, source.baseBranch, normalizedBaseBranch)) {
+    // Branch-off from the repository default branch: sync the local default to origin first so the
+    // new worktree never starts from a stale local tip. This does its own targeted fetch.
+    resolvedBaseBranch = await syncDefaultBranchAndResolveBase(cwd, normalizedBaseBranch);
+  } else {
+    resolvedBaseBranch = await resolveBaseBranchForWorktree(cwd, source.baseBranch);
+    await refreshRemoteTrackingBaseRef(cwd, branchExists ? branchName : resolvedBaseBranch);
+  }
+
   const base = branchExists ? branchName : resolvedBaseBranch;
-  await refreshRemoteTrackingBaseRef(cwd, base);
   const candidateBranch = branchExists ? desiredSlug : branchName;
   const newBranchName = await resolveUniqueLocalBranchName(cwd, candidateBranch);
 
@@ -1843,6 +1856,137 @@ async function refreshRemoteTrackingBaseRef(cwd: string, baseRef: string): Promi
   } catch {
     // The fetch timed out; branch from the cached ref.
   }
+}
+
+// The default-branch sync only applies when the requested base is the repository default branch by
+// bare name. An explicit qualified (refs/...) or origin/ ref names an exact ref the caller chose, so
+// it keeps today's behavior untouched.
+async function isDefaultBranchBaseForSync(
+  cwd: string,
+  requestedBaseBranch: string,
+  normalizedBaseBranch: string,
+): Promise<boolean> {
+  if (isQualifiedRef(requestedBaseBranch) || requestedBaseBranch.trim().startsWith("origin/")) {
+    return false;
+  }
+  const defaultBranch = await resolveRepositoryDefaultBranch(cwd);
+  if (!defaultBranch) {
+    return false;
+  }
+  return normalizeBaseRefName(defaultBranch) === normalizedBaseBranch;
+}
+
+// Bring the local default branch up to date with origin before a branch-off worktree is cut, so a
+// new workspace never starts from a stale local tip. Everything here is best-effort: a failed fetch
+// or a non-fast-forward local branch never blocks creation, and local commits are never overwritten.
+// Returns the ref the worktree should be cut from — the fresh origin ref when the local branch is
+// behind, otherwise the local ref (which also preserves local-only commits when they exist).
+async function syncDefaultBranchAndResolveBase(cwd: string, defaultName: string): Promise<string> {
+  const localRef = `refs/heads/${defaultName}`;
+  const originRef = `refs/remotes/origin/${defaultName}`;
+
+  if (!(await hasOriginRemote(cwd))) {
+    return localRef;
+  }
+
+  // Refresh only the remote-tracking ref (never touches refs/heads/*). Also materializes originRef
+  // when it was never fetched.
+  await refreshRemoteTrackingBaseRef(cwd, originRef);
+
+  const originOid = await revParseOrNull(cwd, originRef);
+  if (!originOid) {
+    return localRef;
+  }
+  const localOid = await revParseOrNull(cwd, localRef);
+  if (!localOid) {
+    // No local copy of the default branch: cut straight from the fresh origin ref.
+    return originRef;
+  }
+  if (localOid === originOid) {
+    return localRef;
+  }
+  if (!(await isAncestor(cwd, localOid, originOid))) {
+    // Local is ahead of or has diverged from origin: keep the user's local commits, branch locally.
+    return localRef;
+  }
+
+  // Local is strictly behind origin: fast-forwarding the local branch is safe.
+  await fastForwardLocalDefaultBranch(cwd, defaultName, originOid);
+  return originRef;
+}
+
+// Fast-forward the local default branch to the origin tip without ever losing work. Ancestry has
+// already been proven by the caller, so this is always a true fast-forward.
+async function fastForwardLocalDefaultBranch(
+  cwd: string,
+  defaultName: string,
+  originOid: string,
+): Promise<void> {
+  try {
+    const checkoutPath = await findWorktreePathForBranch(cwd, defaultName);
+    if (!checkoutPath) {
+      // Not checked out anywhere (includes detached HEAD): move the ref directly.
+      await runGitCommand(["update-ref", `refs/heads/${defaultName}`, originOid], {
+        cwd,
+        acceptExitCodes: [0, 1, 128],
+      });
+      return;
+    }
+    // Checked out (the common case: the main repo is on the default branch). git refuses to fetch
+    // into a checked-out branch, so fast-forward it in place — only when the working tree is clean,
+    // and merge --ff-only is itself non-destructive (it aborts rather than clobbering).
+    if (!(await isWorkingTreeClean(checkoutPath))) {
+      return;
+    }
+    await runGitCommand(["merge", "--ff-only", `refs/remotes/origin/${defaultName}`], {
+      cwd: checkoutPath,
+      timeout: REMOTE_BASE_REFRESH_TIMEOUT_MS,
+      acceptExitCodes: [0, 1, 128],
+    });
+  } catch {
+    // Never block worktree creation on a failed local fast-forward.
+  }
+}
+
+async function findWorktreePathForBranch(cwd: string, branchName: string): Promise<string | null> {
+  const { stdout } = await runGitCommand(["worktree", "list", "--porcelain"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  const entry = parseWorktreeList(stdout).find((candidate) => candidate.branchName === branchName);
+  return entry?.path ?? null;
+}
+
+async function isWorkingTreeClean(cwd: string): Promise<boolean> {
+  const { stdout } = await runGitCommand(["status", "--porcelain"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  return stdout.trim().length === 0;
+}
+
+async function revParseOrNull(cwd: string, ref: string): Promise<string | null> {
+  const result = await runGitCommand(["rev-parse", "--verify", ref], {
+    cwd,
+    acceptExitCodes: [0, 1, 128],
+  });
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const oid = result.stdout.trim();
+  return oid.length > 0 ? oid : null;
+}
+
+async function isAncestor(
+  cwd: string,
+  ancestorOid: string,
+  descendantOid: string,
+): Promise<boolean> {
+  const result = await runGitCommand(["merge-base", "--is-ancestor", ancestorOid, descendantOid], {
+    cwd,
+    acceptExitCodes: [0, 1, 128],
+  });
+  return result.exitCode === 0;
 }
 
 async function ensureLocalBranch(cwd: string, branchName: string): Promise<void> {

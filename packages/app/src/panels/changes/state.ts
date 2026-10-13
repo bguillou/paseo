@@ -13,6 +13,9 @@ export const changesStateSchema = z
     collapsedFilePaths: z.array(z.string()),
     collapsedFolderPaths: z.array(z.string()),
     commitsCollapsed: z.boolean(),
+    // Files the user marked "viewed", paired with the content signature at the
+    // time, so a later change to the file's diff auto-clears the viewed mark.
+    viewedFiles: z.array(z.object({ path: z.string(), signature: z.string() })).default([]),
   })
   .transform(
     ({
@@ -32,4 +35,5 @@ export const defaultChangesState: ChangesState = {
   collapsedFilePaths: [],
   collapsedFolderPaths: [],
   commitsCollapsed: true,
+  viewedFiles: [],
 };

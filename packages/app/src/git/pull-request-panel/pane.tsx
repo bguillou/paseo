@@ -66,7 +66,7 @@ import {
   buildPullRequestThreadContextAttachment,
   canAddPullRequestActivityToChat,
 } from "./context-attachment";
-import { ChecksSection, getCheckIdentity } from "./checks-section";
+import { ChecksSection, getCheckIdentity, type ChecksRerunControls } from "./checks-section";
 import { getActivityVerbKey, getStateLabelKey } from "./data";
 import type { PrPaneActivity, PrPaneCheck, PrPaneData, PrReviewer, PrState } from "./data";
 import { usePrStack } from "./use-pr-stack";
@@ -90,6 +90,7 @@ import {
 } from "./use-reply-to-comment";
 import { useResolvePrThread } from "./use-resolve-thread";
 import { useRequestReview } from "./use-request-review";
+import { useRerunChecks, type PrRerunChecksTarget } from "./use-rerun-checks";
 import { ReviewersSection } from "./reviewers-section";
 import { usePrShowResolvedToggle } from "./pr-review-view-store";
 import {
@@ -391,6 +392,7 @@ export function PullRequestPane({
   const replyController = useReplyToPrComment({ serverId, cwd });
   const resolveController = useResolvePrThread({ serverId, cwd });
   const requestReviewController = useRequestReview({ serverId, cwd });
+  const rerunController = useRerunChecks({ serverId, cwd });
   const { showResolved, toggleShowResolved } = usePrShowResolvedToggle(serverId, cwd);
   const replyContext = useMemo(
     () => ({
@@ -425,6 +427,10 @@ export function PullRequestPane({
   });
   const [activityState, setActivityState] = useState(getActivityState);
   const [loadingCheckKeys, setLoadingCheckKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [rerunningCheckKeys, setRerunningCheckKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [isRerunningFailed, setIsRerunningFailed] = useState(false);
 
   const handleOpenPrUrl = useCallback(() => {
     void openExternalUrl(data.url);
@@ -708,6 +714,96 @@ export function PullRequestPane({
     ],
   );
 
+  const handleRerunCheck = useCallback(
+    async (check: PrPaneCheck) => {
+      const ref = check.detailRef;
+      // Prefer the check run (re-runs that one job); fall back to the whole run.
+      let target: PrRerunChecksTarget | null = null;
+      if (ref?.checkRunId !== undefined) {
+        target = { mode: "check", checkRunId: ref.checkRunId };
+      } else if (ref?.workflowRunId !== undefined) {
+        target = { mode: "run", workflowRunId: ref.workflowRunId };
+      }
+      if (!target) {
+        return;
+      }
+      const checkKey = getCheckIdentity(check);
+      setRerunningCheckKeys((current) => addLoadingCheck(current, checkKey));
+      try {
+        const result = await rerunController.rerunChecks({
+          prNumber: data.number,
+          target,
+          ...(data.repoOwner ? { repoOwner: data.repoOwner } : {}),
+          ...(data.repoName ? { repoName: data.repoName } : {}),
+        });
+        if (!result.ok && result.error) {
+          toast.error(result.error);
+        }
+      } finally {
+        setRerunningCheckKeys((current) => removeLoadingCheck(current, checkKey));
+      }
+    },
+    [data.number, data.repoName, data.repoOwner, rerunController, toast],
+  );
+
+  const handleRerunFailed = useCallback(async () => {
+    // "Re-run failed jobs" is a per-workflow-run operation; a PR's failed checks
+    // can span several runs, so fire one request per distinct run id.
+    const runIds = new Set<number>();
+    for (const check of data.checks) {
+      if (check.status === "failure" && check.detailRef?.workflowRunId !== undefined) {
+        runIds.add(check.detailRef.workflowRunId);
+      }
+    }
+    if (runIds.size === 0) {
+      return;
+    }
+    setIsRerunningFailed(true);
+    try {
+      for (const workflowRunId of runIds) {
+        const result = await rerunController.rerunChecks({
+          prNumber: data.number,
+          target: { mode: "failed", workflowRunId },
+          ...(data.repoOwner ? { repoOwner: data.repoOwner } : {}),
+          ...(data.repoName ? { repoName: data.repoName } : {}),
+        });
+        if (!result.ok && result.error) {
+          toast.error(result.error);
+          break;
+        }
+      }
+    } finally {
+      setIsRerunningFailed(false);
+    }
+  }, [data.checks, data.number, data.repoName, data.repoOwner, rerunController, toast]);
+
+  const canRerunFailed = useMemo(
+    () =>
+      data.checks.some(
+        (check) => check.status === "failure" && check.detailRef?.workflowRunId !== undefined,
+      ),
+    [data.checks],
+  );
+  const rerunControls = useMemo<ChecksRerunControls | undefined>(() => {
+    if (!rerunController.enabled) {
+      return undefined;
+    }
+    return {
+      onRerunCheck: handleRerunCheck,
+      rerunningCheckKeys,
+      onRerunFailed: handleRerunFailed,
+      isRerunningFailed,
+      canRerunFailed,
+    };
+  }, [
+    canRerunFailed,
+    handleRerunCheck,
+    handleRerunFailed,
+    isRerunningFailed,
+    rerunController.enabled,
+    rerunningCheckKeys,
+  ]);
+
   const handleToggleEntryCollapsed = useCallback(
     (entryId: string, collapsed: boolean) => {
       setActivityState((current) => {
@@ -837,6 +933,7 @@ export function PullRequestPane({
             attachEnabled={attachEnabled}
             loadingCheckKeys={loadingCheckKeys}
             onAddLogsToChat={handleAddCheckLogsToChat}
+            rerun={rerunControls}
           />
         )}
 

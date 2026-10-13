@@ -299,6 +299,27 @@ export interface RequestReviewResult {
   ok: boolean;
 }
 
+/**
+ * Forge-neutral re-run-CI target. `mode` selects the scope:
+ *  - "run"    re-runs every job in the workflow run (`workflowRunId`)
+ *  - "failed" re-runs only the failed jobs in the workflow run (`workflowRunId`)
+ *  - "check"  re-runs a single check run (`checkRunId`)
+ * The caller guarantees the id matching the mode is present.
+ */
+export interface RerunChecksOptions {
+  cwd: string;
+  prNumber: number;
+  mode: "run" | "failed" | "check";
+  workflowRunId?: number;
+  checkRunId?: number;
+  repoOwner?: string;
+  repoName?: string;
+}
+
+export interface RerunChecksResult {
+  ok: boolean;
+}
+
 export type ForgeReadOptions =
   | {
       force?: false;
@@ -572,6 +593,12 @@ export interface ForgeService {
    * server_info.features.checkoutForgeRequestReview.
    */
   requestReview?(options: RequestReviewOptions): Promise<RequestReviewResult>;
+  /**
+   * Re-run CI jobs for a pull request. Optional: an adapter that cannot re-run
+   * CI omits it, and the session handler reports the operation as unsupported.
+   * Gated to clients via server_info.features.checkoutForgeRerunChecks.
+   */
+  rerunChecks?(options: RerunChecksOptions): Promise<RerunChecksResult>;
   enablePullRequestAutoMerge(
     options: EnablePullRequestAutoMergeOptions,
   ): Promise<PullRequestAutoMergeResult>;

@@ -30,14 +30,23 @@ interface ReviewFeedbackActionProps {
 export function ReviewFeedbackAction({
   enabled,
   hasDiff,
+  placement = "floating",
   ...props
 }: Omit<ReviewFeedbackActionProps, "workspaceId"> & {
   workspaceId?: string | null;
   enabled: boolean | undefined;
   hasDiff: boolean;
+  /** "inline" renders a bar at the top of the diff (file-titles level) instead of floating. */
+  placement?: "floating" | "inline";
 }) {
   if (enabled === false || !hasDiff) return null;
-  return <OpenReviewFeedbackAction {...props} workspaceId={props.workspaceId ?? ""} />;
+  return (
+    <OpenReviewFeedbackAction
+      {...props}
+      placement={placement}
+      workspaceId={props.workspaceId ?? ""}
+    />
+  );
 }
 
 function OpenReviewFeedbackAction({
@@ -46,10 +55,12 @@ function OpenReviewFeedbackAction({
   serverId,
   workspaceId,
   bottomOffset,
-}: ReviewFeedbackActionProps) {
+  placement,
+}: ReviewFeedbackActionProps & { placement: "floating" | "inline" }) {
   const { t } = useTranslation();
   const { bottom } = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
+  const inline = placement === "inline";
   const onOpenChange = useCallback(
     (open: boolean) => {
       if (!open) model.closeMenu();
@@ -57,17 +68,20 @@ function OpenReviewFeedbackAction({
     [model],
   );
   const noteStyle = useMemo(
-    () => [
-      styles.note,
-      !isCompact && styles.centered,
-      {
-        bottom:
-          bottom +
-          bottomOffset +
-          (isCompact ? 88 : buttonControlHeight.sm + SPACING[4] + SPACING[2]),
-      },
-    ],
-    [bottom, bottomOffset, isCompact],
+    () =>
+      inline
+        ? [styles.inlineNote]
+        : [
+            styles.note,
+            !isCompact && styles.centered,
+            {
+              bottom:
+                bottom +
+                bottomOffset +
+                (isCompact ? 88 : buttonControlHeight.sm + SPACING[4] + SPACING[2]),
+            },
+          ],
+    [bottom, bottomOffset, inline, isCompact],
   );
   const sending = state.phase.kind === "sending";
   const label = t(sending ? "review.feedback.sending" : "review.feedback.send", {
@@ -91,42 +105,55 @@ function OpenReviewFeedbackAction({
         {unavailableNotice}
       </>
     );
+  const trigger =
+    state.commentCount > 0 ? (
+      <DropdownMenu
+        open={state.phase.kind === "choosing"}
+        onOpenChange={onOpenChange}
+        compactMode="sheet"
+      >
+        <FeedbackTrigger
+          model={model}
+          label={label}
+          disabled={!state.canSend}
+          bottomInset={bottom + bottomOffset}
+          inline={inline}
+        />
+        <DropdownMenuContent
+          side="top"
+          align="center"
+          sheetTitle={t("review.feedback.chooseAgent")}
+        >
+          {state.recipients.map((recipient) => (
+            <RecipientOption
+              key={recipient.tab.key}
+              recipient={recipient}
+              model={model}
+              serverId={serverId}
+              workspaceId={workspaceId}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+  const note = notice ? (
+    <View style={noteStyle} accessibilityRole="alert">
+      {notice}
+    </View>
+  ) : null;
+  if (inline) {
+    if (!trigger && !note) return null;
+    return (
+      <View style={styles.inlineBar}>
+        {trigger}
+        {note}
+      </View>
+    );
+  }
   return (
     <>
-      {state.commentCount > 0 ? (
-        <DropdownMenu
-          open={state.phase.kind === "choosing"}
-          onOpenChange={onOpenChange}
-          compactMode="sheet"
-        >
-          <FeedbackTrigger
-            model={model}
-            label={label}
-            disabled={!state.canSend}
-            bottomInset={bottom + bottomOffset}
-          />
-          <DropdownMenuContent
-            side="top"
-            align="center"
-            sheetTitle={t("review.feedback.chooseAgent")}
-          >
-            {state.recipients.map((recipient) => (
-              <RecipientOption
-                key={recipient.tab.key}
-                recipient={recipient}
-                model={model}
-                serverId={serverId}
-                workspaceId={workspaceId}
-              />
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-      {notice ? (
-        <View style={noteStyle} accessibilityRole="alert">
-          {notice}
-        </View>
-      ) : null}
+      {trigger}
+      {note}
     </>
   );
 }
@@ -136,17 +163,34 @@ function FeedbackTrigger({
   label,
   disabled,
   bottomInset,
+  inline,
 }: {
   model: FeedbackModel;
   label: string;
   disabled: boolean;
   bottomInset: number;
+  inline?: boolean;
 }) {
   const { triggerRef } = useMenuContext("FeedbackTrigger");
   const isCompact = useIsCompactFormFactor();
   const press = useCallback(() => {
     void model.press();
   }, [model]);
+  if (inline) {
+    return (
+      <Button
+        ref={triggerRef}
+        variant="default"
+        size="sm"
+        leftIcon={Send}
+        accessibilityLabel={label}
+        disabled={disabled}
+        onPress={press}
+      >
+        {label}
+      </Button>
+    );
+  }
   if (!isCompact) {
     return (
       <View
@@ -261,6 +305,19 @@ function SentNotice({
 const styles = StyleSheet.create((theme) => ({
   wideAction: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   centered: { alignItems: "center" },
+  inlineBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+  },
+  inlineNote: { flexShrink: 1 },
   note: {
     position: "absolute",
     right: theme.spacing[4],

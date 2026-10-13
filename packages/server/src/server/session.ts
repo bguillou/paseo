@@ -2906,6 +2906,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutPullRequest(msg);
       case "checkout_push_request":
         return this.checkoutSession.handleCheckoutPushRequest(msg);
+      case "checkout.abort_merge.request":
+        return this.checkoutSession.handleCheckoutAbortMergeRequest(msg);
+      case "checkout.continue_merge.request":
+        return this.checkoutSession.handleCheckoutContinueMergeRequest(msg);
       case "checkout.refresh.request":
         return this.checkoutSession.handleRefreshRequest(msg);
       case "checkout.discard_changes.request":
@@ -2923,6 +2927,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutForgeResolveThreadRequest(msg);
       case "checkout.forge.request_review.request":
         return this.checkoutSession.handleCheckoutForgeRequestReviewRequest(msg);
+      case "checkout.forge.rerun_checks.request":
+        return this.checkoutSession.handleCheckoutForgeRerunChecksRequest(msg);
+      case "checkout.file_range.request":
+        return this.checkoutSession.handleCheckoutFileRangeRequest(msg);
       case "checkout.forge.get_check_details.request":
       case "checkout.github.get_check_details.request":
         return this.checkoutSession.handleCheckoutForgeGetCheckDetailsRequest(msg);

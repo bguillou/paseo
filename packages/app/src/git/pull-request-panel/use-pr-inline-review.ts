@@ -36,6 +36,22 @@ export function usePrInlineReview({
     (state) => state.addWorkspaceAttachment,
   );
   const [openComposerKeys, setOpenComposerKeys] = useState<ReadonlySet<string>>(() => new Set());
+  // Rendered comment heights, reported by each card's onLayout. Feeds the reserved
+  // overlay height so markdown/image bodies aren't clipped or gapped.
+  const [commentHeights, setCommentHeights] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const onMeasureCommentHeight = useCallback((commentId: string, height: number) => {
+    const rounded = Math.round(height);
+    setCommentHeights((previous) => {
+      if (previous.get(commentId) === rounded) {
+        return previous;
+      }
+      const next = new Map(previous);
+      next.set(commentId, rounded);
+      return next;
+    });
+  }, []);
 
   const { threadsByTarget, commentCountByPath, threadsByKey } = useMemo(
     () => buildInlineReviewData(data, showResolved),
@@ -132,12 +148,16 @@ export function usePrInlineReview({
       onToggleComposer,
       onReply,
       onAddThreadToChat,
+      commentHeights,
+      onMeasureCommentHeight,
       ...(resolveController.enabled ? { onResolveThread } : {}),
     };
   }, [
     commentCountByPath,
+    commentHeights,
     enabled,
     onAddThreadToChat,
+    onMeasureCommentHeight,
     onReply,
     onResolveThread,
     onToggleComposer,

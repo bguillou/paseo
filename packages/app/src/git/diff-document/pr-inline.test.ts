@@ -33,13 +33,19 @@ function thread(key: string, commentCount: number): PrInlineThreadData {
   };
 }
 
-function actions(threads: PrInlineThreadData[], openComposerKeys: string[] = []): PrInlineActions {
+function actions(
+  threads: PrInlineThreadData[],
+  openComposerKeys: string[] = [],
+  commentHeights: ReadonlyMap<string, number> = new Map(),
+): PrInlineActions {
   return {
     threadsByTarget: new Map([["a.ts:new:1", threads]]),
     commentCountByPath: new Map(),
     openComposerKeys: new Set(openComposerKeys),
     onToggleComposer: () => {},
     onReply: async () => ({ ok: true, error: null }),
+    commentHeights,
+    onMeasureCommentHeight: () => {},
   };
 }
 
@@ -99,6 +105,16 @@ describe("getPrInlineThreadState", () => {
         PR_INLINE_REPLY_BUTTON_HEIGHT,
     );
   });
+
+  it("uses a measured comment height when reported", () => {
+    const state = getPrInlineThreadState({
+      reviewTarget: target("a.ts:new:1"),
+      prReviewActions: actions([thread("a.ts:new:1#t", 1)], [], new Map([["a.ts:new:1#t-0", 123]])),
+    });
+    expect(state?.height).toBe(
+      PR_INLINE_VERTICAL_PADDING * 2 + 123 + PR_INLINE_GAP + PR_INLINE_REPLY_BUTTON_HEIGHT,
+    );
+  });
 });
 
 describe("prInlineGeometryKey", () => {
@@ -116,6 +132,13 @@ describe("prInlineGeometryKey", () => {
   it("changes when a thread gains a comment", () => {
     const before = prInlineGeometryKey(actions([thread("a.ts:new:1#t", 1)]));
     const after = prInlineGeometryKey(actions([thread("a.ts:new:1#t", 2)]));
+    expect(after).not.toBe(before);
+  });
+
+  it("changes when a measured comment height changes so the model repaints", () => {
+    const threads = [thread("a.ts:new:1#t", 1)];
+    const before = prInlineGeometryKey(actions(threads));
+    const after = prInlineGeometryKey(actions(threads, [], new Map([["a.ts:new:1#t-0", 140]])));
     expect(after).not.toBe(before);
   });
 });

@@ -42,7 +42,9 @@ import type {
   SearchResult,
 } from "../../../services/forge-service.js";
 import {
+  abortConflictOperation,
   commitChanges,
+  continueConflictOperation,
   createPullRequest,
   discardChanges,
   forgeAuthStateFromError,
@@ -1019,6 +1021,48 @@ export class CheckoutSession {
     }
   }
 
+  async handleCheckoutAbortMergeRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.abort_merge.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      await abortConflictOperation(cwd);
+      await this.gitMutation.notifyGitMutation(cwd, "abort-merge", { invalidateForge: true });
+      this.scheduleDiffRefresh(cwd);
+      this.host.emit({
+        type: "checkout.abort_merge.response",
+        payload: { cwd, success: true, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.abort_merge.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
+  async handleCheckoutContinueMergeRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.continue_merge.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      await continueConflictOperation(cwd);
+      await this.gitMutation.notifyGitMutation(cwd, "continue-merge", { invalidateForge: true });
+      this.scheduleDiffRefresh(cwd);
+      this.host.emit({
+        type: "checkout.continue_merge.response",
+        payload: { cwd, success: true, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.continue_merge.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
   async handleCheckoutPrCreateRequest(
     msg: Extract<SessionInboundMessage, { type: "checkout_pr_create_request" }>,
   ): Promise<void> {
@@ -1314,6 +1358,75 @@ export class CheckoutSession {
           error: toCheckoutError(error),
           requestId,
         },
+      });
+    }
+  }
+
+  async handleCheckoutForgeRerunChecksRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.forge.rerun_checks.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const responseType = "checkout.forge.rerun_checks.response" as const;
+    try {
+      const { service } = await this.requireForgeService(cwd);
+      if (!service.rerunChecks) {
+        throw new Error("This forge does not support re-running CI");
+      }
+      await service.rerunChecks({
+        cwd,
+        prNumber: msg.prNumber,
+        mode: msg.target.mode,
+        ...(msg.target.workflowRunId !== undefined
+          ? { workflowRunId: msg.target.workflowRunId }
+          : {}),
+        ...(msg.target.checkRunId !== undefined ? { checkRunId: msg.target.checkRunId } : {}),
+        ...(msg.repoOwner ? { repoOwner: msg.repoOwner } : {}),
+        ...(msg.repoName ? { repoName: msg.repoName } : {}),
+      });
+      // Refresh the forge status so the re-queued checks appear as pending.
+      await this.gitMutation.notifyGitMutation(cwd, "rerun-checks", { invalidateForge: true });
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: responseType,
+        payload: {
+          cwd,
+          success: false,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutFileRangeRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.file_range.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const responseType = "checkout.file_range.response" as const;
+    try {
+      const lines = await this.workspaceGitService.readFileRange(cwd, {
+        path: msg.path,
+        ref: msg.ref,
+        startLine: msg.startLine,
+        endLine: msg.endLine,
+      });
+      this.host.emit({
+        type: responseType,
+        payload: { cwd, lines, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: responseType,
+        payload: { cwd, lines: null, error: toCheckoutError(error), requestId },
       });
     }
   }

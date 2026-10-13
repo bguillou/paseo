@@ -950,6 +950,7 @@ describe("workspace-layout-store actions", () => {
       collapsedFilePaths: ["a.ts"],
       collapsedFolderPaths: ["src"],
       commitsCollapsed: false,
+      viewedFiles: [],
     };
     store.setTabState(workspaceKey, first, changed);
     const tabs = collectAllTabs(
@@ -1443,12 +1444,14 @@ describe("workspace-layout-store actions", () => {
       collapsedFilePaths: ["src/a.ts"],
       collapsedFolderPaths: ["src"],
       commitsCollapsed: false,
+      viewedFiles: [],
     };
     const secondState: ChangesState = {
       treeVisible: false,
       collapsedFilePaths: ["README.md"],
       collapsedFolderPaths: ["docs"],
       commitsCollapsed: true,
+      viewedFiles: [],
     };
     source.getState().setTabState(workspaceKey, first, firstState);
     source.getState().setTabState(workspaceKey, second, secondState);

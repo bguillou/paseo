@@ -84,6 +84,41 @@ function createLegacyWorktreeForTest(
   });
 }
 
+// Pushes the repo's main to a fresh bare origin, then advances origin/main from a separate clone so
+// the repo's local main is strictly behind origin. The repo has NOT fetched the new tip, so the
+// code under test must fetch it itself. Returns the two tips to assert against.
+function setupOriginAheadOfLocalMain(
+  repoDir: string,
+  tempDir: string,
+): { staleLocalOid: string; originTipOid: string } {
+  const remoteDir = join(tempDir, "remote.git");
+  const remoteCloneDir = join(tempDir, "remote-clone");
+  execFileSync("git", ["init", "--bare", remoteDir]);
+  execFileSync("git", ["remote", "add", "origin", remoteDir], { cwd: repoDir });
+  execFileSync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
+  const staleLocalOid = localMainOid(repoDir);
+
+  execFileSync("git", ["clone", remoteDir, remoteCloneDir]);
+  execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: remoteCloneDir });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: remoteCloneDir });
+  execFileSync("git", ["checkout", "-B", "main", "origin/main"], { cwd: remoteCloneDir });
+  writeFileSync(join(remoteCloneDir, "origin-only.txt"), "from-origin\n");
+  execFileSync("git", ["add", "origin-only.txt"], { cwd: remoteCloneDir });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "advance origin main"], {
+    cwd: remoteCloneDir,
+  });
+  execFileSync("git", ["push", "origin", "main"], { cwd: remoteCloneDir });
+  const originTipOid = execFileSync("git", ["rev-parse", "HEAD"], { cwd: remoteCloneDir })
+    .toString()
+    .trim();
+
+  return { staleLocalOid, originTipOid };
+}
+
+function localMainOid(repoDir: string): string {
+  return execFileSync("git", ["rev-parse", "refs/heads/main"], { cwd: repoDir }).toString().trim();
+}
+
 describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
   describe("createWorktree", () => {
     let tempDir: string;
@@ -722,6 +757,171 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       });
 
       expect(readFileSync(join(result.worktreePath, "file.txt"), "utf8")).toBe("from-local-only\n");
+    });
+
+    describe("branch-off default-branch sync", () => {
+      it("fast-forwards the local default branch and cuts from the fresh tip when it is not checked out", async () => {
+        const { originTipOid } = setupOriginAheadOfLocalMain(repoDir, tempDir);
+        // Move the main repo off main so the default branch is not checked out anywhere.
+        execFileSync("git", ["checkout", "-b", "parking"], { cwd: repoDir });
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "sync-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "sync-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        expect(localMainOid(repoDir)).toBe(originTipOid);
+        expect(existsSync(join(result.worktreePath, "origin-only.txt"))).toBe(true);
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/remotes/origin/main" });
+      });
+
+      it("fast-forwards the checked-out default branch in place when the working tree is clean", async () => {
+        const { originTipOid } = setupOriginAheadOfLocalMain(repoDir, tempDir);
+        // repoDir stays on main (the common case) and is clean.
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "sync-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "sync-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        expect(localMainOid(repoDir)).toBe(originTipOid);
+        // The in-place fast-forward updated the main repo's working tree too.
+        expect(readFileSync(join(repoDir, "origin-only.txt"), "utf8")).toBe("from-origin\n");
+        expect(existsSync(join(result.worktreePath, "origin-only.txt"))).toBe(true);
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/remotes/origin/main" });
+      });
+
+      it("leaves a dirty checked-out default branch untouched but still cuts from the fresh tip", async () => {
+        const { staleLocalOid } = setupOriginAheadOfLocalMain(repoDir, tempDir);
+        writeFileSync(join(repoDir, "file.txt"), "uncommitted work\n");
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "sync-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "sync-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        // Local main ref unchanged and the uncommitted work preserved.
+        expect(localMainOid(repoDir)).toBe(staleLocalOid);
+        expect(readFileSync(join(repoDir, "file.txt"), "utf8")).toBe("uncommitted work\n");
+        // The new worktree still starts from the fresh origin tip.
+        expect(existsSync(join(result.worktreePath, "origin-only.txt"))).toBe(true);
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/remotes/origin/main" });
+      });
+
+      it("preserves local commits and branches locally when the default branch has diverged", async () => {
+        const { originTipOid } = setupOriginAheadOfLocalMain(repoDir, tempDir);
+        // Add a local-only commit so local main diverges from origin main.
+        writeFileSync(join(repoDir, "local-only.txt"), "from-local\n");
+        execFileSync("git", ["add", "local-only.txt"], { cwd: repoDir });
+        execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "local only"], {
+          cwd: repoDir,
+        });
+        const divergedLocalOid = localMainOid(repoDir);
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "sync-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "sync-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        // Local main not overwritten; the worktree carries the local commit, not origin's.
+        expect(localMainOid(repoDir)).toBe(divergedLocalOid);
+        expect(localMainOid(repoDir)).not.toBe(originTipOid);
+        expect(existsSync(join(result.worktreePath, "local-only.txt"))).toBe(true);
+        expect(existsSync(join(result.worktreePath, "origin-only.txt"))).toBe(false);
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/heads/main" });
+      });
+
+      it("does not sync an explicit non-default base branch", async () => {
+        const { staleLocalOid } = setupOriginAheadOfLocalMain(repoDir, tempDir);
+        execFileSync("git", ["branch", "topic", "main"], { cwd: repoDir });
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "topic-feature",
+          cwd: repoDir,
+          baseBranch: "topic",
+          worktreeSlug: "topic-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        // The default branch is left as-is because the requested base is not the default branch.
+        expect(localMainOid(repoDir)).toBe(staleLocalOid);
+        expect(existsSync(join(result.worktreePath, "origin-only.txt"))).toBe(false);
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "topic", baseRef: "refs/heads/topic" });
+      });
+
+      it("branches from the local default branch when the repo has no origin", async () => {
+        writeFileSync(join(repoDir, "file.txt"), "local-advance\n");
+        execFileSync("git", ["add", "file.txt"], { cwd: repoDir });
+        execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "advance local main"], {
+          cwd: repoDir,
+        });
+        const localOid = localMainOid(repoDir);
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "no-origin-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "no-origin-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        expect(localMainOid(repoDir)).toBe(localOid);
+        expect(readFileSync(join(result.worktreePath, "file.txt"), "utf8")).toBe("local-advance\n");
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/heads/main" });
+      });
+
+      it("still creates the worktree from local main when the origin fetch fails", async () => {
+        execFileSync("git", ["remote", "add", "origin", join(tempDir, "does-not-exist.git")], {
+          cwd: repoDir,
+        });
+        const localOid = localMainOid(repoDir);
+
+        const result = await createLegacyWorktreeForTest({
+          branchName: "offline-feature",
+          cwd: repoDir,
+          baseBranch: "main",
+          worktreeSlug: "offline-feature",
+          runSetup: false,
+          paseoHome,
+        });
+
+        expect(localMainOid(repoDir)).toBe(localOid);
+        expect(existsSync(result.worktreePath)).toBe(true);
+        expect(readFileSync(join(result.worktreePath, "file.txt"), "utf8")).toBe("hello\n");
+        expect(
+          JSON.parse(readFileSync(getPaseoWorktreeMetadataPath(result.worktreePath), "utf8")),
+        ).toMatchObject({ baseRefName: "main", baseRef: "refs/heads/main" });
+      });
     });
 
     it("throws when neither origin/{branch} nor local {branch} exists", async () => {

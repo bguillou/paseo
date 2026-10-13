@@ -862,6 +862,18 @@ export const es: TranslationResources = {
           pending: "Actualizando...",
           success: "Actualizado",
         },
+        abortConflict: {
+          label: "Abort",
+          pending: "Aborting...",
+          success: "Aborted",
+          failed: "Failed to abort",
+        },
+        continueConflict: {
+          label: "Continue",
+          pending: "Continuing...",
+          success: "Continued",
+          failed: "Failed to continue",
+        },
         archive: {
           label: "Archivar espacio de trabajo",
           pending: "Archivando...",
@@ -978,6 +990,27 @@ export const es: TranslationResources = {
           unpushedCommits: "Confirmaciones no enviadas de{{count}}",
         },
       },
+      status: {
+        noPrOpen: "No open pull request",
+        prOpen: "Pull request #{{number}} open",
+        uncommittedChanges_one: "{{count}} uncommitted change",
+        uncommittedChanges_other: "{{count}} uncommitted changes",
+        behindBase_one: "{{count}} commit behind {{baseRef}}",
+        behindBase_other: "{{count}} commits behind {{baseRef}}",
+        behindRemote_one: "{{count}} commit behind {{remote}}",
+        behindRemote_other: "{{count}} commits behind {{remote}}",
+        toPush_one: "{{count}} commit to push",
+        toPush_other: "{{count}} commits to push",
+        conflicts_one: "{{count}} file in conflict",
+        conflicts_other: "{{count}} files in conflict",
+        upToDate: "Everything is up to date",
+        remote: "remote",
+        viewPr: "View",
+        askAgent: "Ask agent",
+        askAgentNoChat: "Open an agent to ask it to resolve the conflicts",
+        askAgentPrompt:
+          "There are git merge conflicts in this workspace. Resolve the conflicts in these files, then stage them:\n{{files}}",
+      },
       diff: {
         openChangesTab: "Abrir la pestaña Cambios",
         openDiffTab: "Abrir la pestaña Diferencia",
@@ -1011,6 +1044,9 @@ export const es: TranslationResources = {
         seeCommittedChanges: "Ver cambios confirmados",
         checkingRepository: "Comprobando repositorio...",
         notRepository: "No es un repositorio de git",
+        expandUp: "Mostrar líneas arriba",
+        expandDown: "Mostrar líneas abajo",
+        expandAll: "Mostrar todas las líneas ocultas",
         diffMode: "modo diferencial",
         uncommitted: "No comprometido",
         committed: "Comprometido",
@@ -1019,6 +1055,7 @@ export const es: TranslationResources = {
         newFile: "Nuevo",
         deletedFile: "Eliminado",
         modifiedFile: "Modificado",
+        conflictedFile: "Conflicted",
         commits: {
           title: "Commits",
           countLabel: "{{count}} commits del espacio de trabajo",
@@ -1052,6 +1089,9 @@ export const es: TranslationResources = {
           openInDiff: "Abrir en el diff",
           showResolved: "Mostrar resueltos",
           hideResolved: "Ocultar resueltos",
+          rerun: "Reejecutar",
+          rerunCheck: "Reejecutar esta verificación",
+          rerunFailed: "Reejecutar fallidas",
         },
         checksOverview: {
           headline: {
@@ -1169,6 +1209,7 @@ export const es: TranslationResources = {
           replyFailed: "No se pudo publicar la respuesta",
           resolveFailed: "No se pudo actualizar el hilo",
           requestReviewFailed: "No se pudo solicitar la revisión",
+          rerunChecksFailed: "No se pudo reejecutar la CI",
         },
       },
       forgeSetup: {
@@ -2067,6 +2108,10 @@ export const es: TranslationResources = {
       emptyTitle: "Aún no hay ninguna solicitud de extracción",
       emptyDescription: "Crea una solicitud para este checkout y consulta aquí sus detalles.",
     },
+    gitStatus: {
+      label: "Git status",
+      subtitle: "Branch status and conflicts",
+    },
     diff: {
       changesLabel: "Cambios",
       diffLabel: "Diferencia",
@@ -2904,6 +2949,14 @@ export const es: TranslationResources = {
           "Los árboles de trabajo nuevos usan el script de configuración de la rama base que selecciones.",
         teardown: "Demoler",
         teardownAccessibility: "Comandos de desmontaje del árbol de trabajo",
+        portStart: "Puerto inicial",
+        portStartInfo:
+          "Puerto TCP base opcional. Cada worktree obtiene un puerto determinista (puerto inicial + 10 × ranura), expuesto a sus comandos como $PASEO_WORKTREE_PORT. Déjalo vacío para un puerto libre aleatorio.",
+        portStartAccessibility: "Puerto inicial del árbol de trabajo",
+        portStartError: {
+          invalid: "Introduce un número entero.",
+          range: "El puerto debe estar entre 1 y 65535.",
+        },
       },
       scripts: {
         title: "Scripts",

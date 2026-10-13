@@ -33,7 +33,7 @@ const REQUIRED_ASSET_PATTERNS = [
   /Paseo-Setup-.*\.exe$/,
 ];
 
-const GITHUB_RELEASES_URL = "https://api.github.com/repos/getpaseo/paseo/releases?per_page=10";
+const GITHUB_RELEASES_URL = "https://api.github.com/repos/bguillou/paseo/releases?per_page=10";
 const RELEASE_CACHE_KEY = "github-release:v2";
 const ANDROID_RELEASE_CACHE_KEY = "github-android-release:v1";
 

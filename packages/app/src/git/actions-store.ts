@@ -25,7 +25,9 @@ export type CheckoutGitAsyncActionId =
   | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
-  | "discard-changes";
+  | "discard-changes"
+  | "abort-merge"
+  | "continue-merge";
 
 type CheckoutKey = string;
 type StatusMap = Partial<Record<CheckoutGitAsyncActionId, CheckoutGitActionStatus>>;
@@ -122,6 +124,8 @@ interface CheckoutGitActionsStoreState {
   mergeBranch: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   mergeFromBase: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   discardChanges: (params: { serverId: string; cwd: string; paths: string[] }) => Promise<void>;
+  abortMerge: (params: { serverId: string; cwd: string }) => Promise<void>;
+  continueMerge: (params: { serverId: string; cwd: string }) => Promise<void>;
 }
 
 async function runCheckoutAction({
@@ -383,6 +387,40 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         if (!payload.success) {
           throw new Error(
             payload.error?.message ?? i18n.t("workspace.fileActions.confirmRevert.failed"),
+          );
+        }
+      },
+    });
+  },
+
+  abortMerge: async ({ serverId, cwd }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "abort-merge",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutAbortMerge(cwd);
+        if (!payload.success) {
+          throw new Error(
+            payload.error?.message ?? i18n.t("workspace.git.actions.abortConflict.failed"),
+          );
+        }
+      },
+    });
+  },
+
+  continueMerge: async ({ serverId, cwd }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "continue-merge",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutContinueMerge(cwd);
+        if (!payload.success) {
+          throw new Error(
+            payload.error?.message ?? i18n.t("workspace.git.actions.continueConflict.failed"),
           );
         }
       },

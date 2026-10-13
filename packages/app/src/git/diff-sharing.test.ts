@@ -1,6 +1,11 @@
 import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
-import { retainDiffFiles, shareCheckoutDiff, shareCommitFileDiff } from "./diff-sharing";
+import {
+  computeDiffFileSignature,
+  retainDiffFiles,
+  shareCheckoutDiff,
+  shareCommitFileDiff,
+} from "./diff-sharing";
 
 const file: ParsedDiffFile = {
   path: "a.ts",
@@ -144,5 +149,26 @@ describe("diff sharing", () => {
     expect(shareCommitFileDiff(previous, structuredClone(previous))).toBe(previous);
     expect(shareCommitFileDiff(previous, { file: null })).toEqual({ file: null });
     expect(shareCommitFileDiff({ file: null }, previous)).toBe(previous);
+  });
+});
+
+describe("computeDiffFileSignature", () => {
+  it("is stable for identical content", () => {
+    expect(computeDiffFileSignature(file)).toBe(computeDiffFileSignature(structuredClone(file)));
+  });
+
+  it("changes when any content field changes", () => {
+    const baseline = computeDiffFileSignature(file);
+    for (const mutate of Object.values(fileChanges)) {
+      const next = structuredClone(file);
+      mutate(next);
+      expect(computeDiffFileSignature(next)).not.toBe(baseline);
+    }
+  });
+
+  it("changes when a line's text changes", () => {
+    const next = structuredClone(file);
+    next.hunks[0]!.lines[0]!.content = "const b";
+    expect(computeDiffFileSignature(next)).not.toBe(computeDiffFileSignature(file));
   });
 });

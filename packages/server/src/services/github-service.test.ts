@@ -8,6 +8,7 @@ import {
   GitHubCliMissingError,
   GitHubCommandError,
   GITHUB_POLL_ALIGNMENT_MS,
+  buildGitHubRerunApiPath,
   computeGithubNextInterval,
   createGitHubService,
   parseStatusCheckRollup,
@@ -4908,5 +4909,32 @@ describe("createGitHubService setThreadResolved", () => {
 
     expect(result).toEqual({ resolved: false });
     expect(runner.calls[0]?.args[3]).toContain("unresolveReviewThread");
+  });
+});
+
+describe("buildGitHubRerunApiPath", () => {
+  it("re-runs a whole workflow run", () => {
+    expect(
+      buildGitHubRerunApiPath("o/r", { cwd: "/x", prNumber: 1, mode: "run", workflowRunId: 42 }),
+    ).toBe("repos/o/r/actions/runs/42/rerun");
+  });
+
+  it("re-runs only failed jobs in a workflow run", () => {
+    expect(
+      buildGitHubRerunApiPath("o/r", { cwd: "/x", prNumber: 1, mode: "failed", workflowRunId: 42 }),
+    ).toBe("repos/o/r/actions/runs/42/rerun-failed-jobs");
+  });
+
+  it("re-requests a single check run", () => {
+    expect(
+      buildGitHubRerunApiPath("o/r", { cwd: "/x", prNumber: 1, mode: "check", checkRunId: 7 }),
+    ).toBe("repos/o/r/check-runs/7/rerequest");
+  });
+
+  it("throws when the id matching the mode is missing", () => {
+    expect(() => buildGitHubRerunApiPath("o/r", { cwd: "/x", prNumber: 1, mode: "run" })).toThrow();
+    expect(() =>
+      buildGitHubRerunApiPath("o/r", { cwd: "/x", prNumber: 1, mode: "check" }),
+    ).toThrow();
   });
 });

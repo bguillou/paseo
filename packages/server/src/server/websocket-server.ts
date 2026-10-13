@@ -204,6 +204,8 @@ function createFallbackWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSna
       remoteUrl: null,
       isPaseoOwnedWorktree: false,
       isDirty: null,
+      conflictedPaths: [],
+      conflictOperation: null,
       baseRef: null,
       aheadBehind: null,
       upstreamRef: null,
@@ -242,6 +244,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     getSnapshot: async (cwd: string) => createFallbackWorkspaceGitSnapshot(cwd),
     resolveForge: async () => null,
     getCheckoutDiff: async () => ({ diff: "" }),
+    readFileRange: async () => null,
     validateBranchRef: async () => ({ kind: "not-found" }),
     hasLocalBranch: async () => false,
     suggestBranchesForCwd: async () => [],
@@ -1824,6 +1827,14 @@ export class VoiceAssistantWebSocketServer {
         checkoutForgeResolveThread: true,
         // COMPAT(checkoutForgeRequestReview): added in v0.11.0, remove gate after 2027-10-08.
         checkoutForgeRequestReview: true,
+        // COMPAT(checkoutForgeRerunChecks): added in v0.11.2, remove gate after 2027-10-13.
+        checkoutForgeRerunChecks: true,
+        // COMPAT(checkoutFileRange): added in v0.11.2, remove gate after 2027-10-13.
+        checkoutFileRange: true,
+        // COMPAT(gitConflictState): added in v0.11.3, remove gate after 2027-10-13.
+        gitConflictState: true,
+        // COMPAT(checkoutConflictResolution): added in v0.11.3, remove gate after 2027-10-13.
+        checkoutConflictResolution: true,
         // COMPAT(checkoutGithubSetAutoMerge): added in v0.1.75 and retained as
         // the fallback for checkoutForgeSetAutoMerge. Stop advertising it after
         // 2027-01-17 once supported floors are >= v0.2.0.
