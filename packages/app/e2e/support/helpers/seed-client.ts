@@ -14,6 +14,7 @@ export interface SeedWorkspaceDescriptor {
   workspaceDirectory: string;
   diffStat: { additions: number; deletions: number } | null;
   labels?: string[];
+  manualStatus?: { statusId: string; baseline: string } | null;
 }
 
 interface SeedProjectDescriptor {
@@ -51,6 +52,10 @@ export interface SeedDaemonClient {
     label: { name: string; color: "red" };
     assigned: boolean;
   }): Promise<unknown>;
+  createWorkspaceStatus(input: {
+    name: string;
+    color: "red" | "sky";
+  }): Promise<{ status: { id: string; name: string } }>;
   listProjects(): Promise<{ projects: SeedProjectDescriptor[] }>;
   createWorkspace(input: {
     source:

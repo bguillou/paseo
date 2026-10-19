@@ -22,7 +22,7 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { StatusBucket } from "@/hooks/sidebar-status-view-model";
-import type { PrStatusBucket } from "@/hooks/sidebar-pr-status-view-model";
+import type { PrStatusBucket, PrStatusGroupLeading } from "@/hooks/sidebar-pr-status-view-model";
 import { WORKSPACE_LABEL_COLORS } from "@getpaseo/protocol/workspace-labels";
 import { WORKSPACE_LABEL_ICON_MAPPINGS } from "@/workspace-labels/swatch";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
@@ -517,6 +517,16 @@ function StatusGroupIcon({ bucket }: { bucket: StatusBucket }) {
   }
 }
 
+/** The icon a PR-status group or kanban column leads with. */
+export function PrStatusLeadingIcon({ leading }: { leading: PrStatusGroupLeading }) {
+  if (leading.kind === "auto") return <PrStatusGroupIcon bucket={leading.bucket} />;
+  return (
+    <ThemedCircle
+      uniProps={CUSTOM_STATUS_GROUP_ICON_PROPS.get(leading.color) ?? mutedGroupIconProps}
+    />
+  );
+}
+
 function PrStatusGroupIcon({ bucket }: { bucket: PrStatusBucket }) {
   switch (bucket) {
     case "in_review":
@@ -530,7 +540,8 @@ function PrStatusGroupIcon({ bucket }: { bucket: PrStatusBucket }) {
   }
 }
 
-const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
+/** A workspace row with its project, as the grouped sidebar modes and the kanban show it. */
+export const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   workspace,
   hostBadge,
   projectName,

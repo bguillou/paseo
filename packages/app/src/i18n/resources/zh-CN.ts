@@ -1178,6 +1178,18 @@ export const zhCN: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "没有工作区",
+      menu: "{{name}} 列选项",
+      moveLeft: "向左移动",
+      moveRight: "向右移动",
+    },
+    errors: {
+      statusUnavailable: "此工作区所在的主机没有“{{status}}”状态",
+    },
+  },
   workspaceStatuses: {
     title: "状态",
     automatic: "自动",
@@ -1351,6 +1363,7 @@ export const zhCN: TranslationResources = {
       sessions: "历史",
       search: "搜索",
       schedules: "计划",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",

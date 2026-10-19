@@ -3,6 +3,7 @@ import { router, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   CalendarClock,
+  SquareKanban,
   CircleDashed,
   Folder,
   FolderPlus,
@@ -29,6 +30,7 @@ import { clearCommandCenterFocusRestoreElement } from "@/utils/command-center-fo
 import {
   buildOpenProjectRoute,
   buildSchedulesRoute,
+  buildKanbanRoute,
   buildSessionsRoute,
   buildSettingsRoute,
 } from "@/utils/host-routes";
@@ -45,6 +47,9 @@ const ThemedHistory = withUnistyles(History, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const ThemedCalendarClock = withUnistyles(CalendarClock, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedSquareKanban = withUnistyles(SquareKanban, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const ThemedKeyboard = withUnistyles(Keyboard, (theme) => ({
@@ -83,6 +88,10 @@ function SchedulesIcon({ size }: CommandCenterIconProps) {
   return <ThemedCalendarClock size={size} strokeWidth={2.2} />;
 }
 
+function KanbanIcon({ size }: CommandCenterIconProps) {
+  return <ThemedSquareKanban size={size} strokeWidth={2.2} />;
+}
+
 function KeyboardIcon({ size }: CommandCenterIconProps) {
   return <ThemedKeyboard size={size} strokeWidth={2.2} />;
 }
@@ -118,6 +127,7 @@ export function CommandCenterRootActions() {
   const homeRoute = useMemo<Href>(() => buildOpenProjectRoute(), []);
   const sessionsRoute = useMemo<Href>(() => buildSessionsRoute(), []);
   const schedulesRoute = useMemo<Href>(() => buildSchedulesRoute(), []);
+  const kanbanRoute = useMemo<Href>(() => buildKanbanRoute(), []);
   const setShortcutsDialogOpen = useKeyboardShortcutsStore((state) => state.setShortcutsDialogOpen);
   // Narrow selector on purpose: a whole-store subscription would re-register every root action
   // each time host filters are reconciled.
@@ -246,6 +256,24 @@ export function CommandCenterRootActions() {
         },
       },
       {
+        id: "kanban",
+        group: "actions",
+        groupRank: 0,
+        rank: 6,
+        keywords: ["kanban", "board", "status", "statuses", "tasks"],
+        visibility: "always",
+        run: () => {
+          clearCommandCenterFocusRestoreElement();
+          router.push(kanbanRoute);
+        },
+        presentation: {
+          kind: "action",
+          title: t("sidebar.sections.kanban"),
+          sectionTitle: t("shell.commandCenter.actions"),
+          icon: KanbanIcon,
+        },
+      },
+      {
         id: "settings",
         group: "actions",
         groupRank: 0,
@@ -331,6 +359,7 @@ export function CommandCenterRootActions() {
 
     return availableActions;
   }, [
+    kanbanRoute,
     groupMode,
     homeRoute,
     keyboardActionDispatcher,

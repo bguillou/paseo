@@ -1193,6 +1193,18 @@ export const ko: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "워크스페이스 없음",
+      menu: "{{name}} 열 옵션",
+      moveLeft: "왼쪽으로 이동",
+      moveRight: "오른쪽으로 이동",
+    },
+    errors: {
+      statusUnavailable: "이 워크스페이스의 호스트에는 “{{status}}” 상태가 없습니다",
+    },
+  },
   workspaceStatuses: {
     title: "상태",
     automatic: "자동",
@@ -1366,6 +1378,7 @@ export const ko: TranslationResources = {
       sessions: "기록",
       search: "검색",
       schedules: "일정",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "워크트리 스크립트 설정",
