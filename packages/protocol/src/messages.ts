@@ -27,6 +27,7 @@ import { AgentProviderSchema } from "./provider-manifest.js";
 import { ProviderPaseoToolsPolicySchema } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import { WORKSPACE_LABEL_COLORS } from "./workspace-labels.js";
+import { WORKSPACE_AUTO_STATUSES } from "./workspace-statuses.js";
 import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -1039,6 +1040,53 @@ export const WorkspaceLabelDeleteInspectRequestSchema = z.object({
   type: z.literal("workspace.label.delete.inspect.request"),
   requestId: z.string(),
   name: z.string(),
+});
+
+export const WorkspaceAutoStatusSchema = z.enum(WORKSPACE_AUTO_STATUSES);
+/** A custom status. `id` is host-assigned and stable across renames. */
+export const WorkspaceStatusDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: WorkspaceLabelColorSchema,
+});
+/**
+ * A status the user pinned on a workspace. `statusId` is an auto status or a custom status id.
+ * `baseline` is the auto status the client derived when the user assigned it: the override holds
+ * only while the derived status still equals it.
+ */
+export const WorkspaceManualStatusSchema = z.object({
+  statusId: z.string(),
+  baseline: WorkspaceAutoStatusSchema,
+});
+
+export const WorkspaceStatusListRequestSchema = z.object({
+  type: z.literal("workspace.status.list.request"),
+  requestId: z.string(),
+  subscribe: z.object({ subscriptionId: z.string().optional() }).optional(),
+});
+export const WorkspaceStatusCreateRequestSchema = z.object({
+  type: z.literal("workspace.status.create.request"),
+  requestId: z.string(),
+  name: z.string(),
+  color: WorkspaceLabelColorSchema,
+});
+export const WorkspaceStatusUpdateRequestSchema = z.object({
+  type: z.literal("workspace.status.update.request"),
+  requestId: z.string(),
+  id: z.string(),
+  name: z.string().optional(),
+  color: WorkspaceLabelColorSchema.optional(),
+});
+export const WorkspaceStatusDeleteRequestSchema = z.object({
+  type: z.literal("workspace.status.delete.request"),
+  requestId: z.string(),
+  id: z.string(),
+});
+export const WorkspaceStatusAssignmentSetRequestSchema = z.object({
+  type: z.literal("workspace.status.assignment.set.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  manualStatus: WorkspaceManualStatusSchema.nullable(),
 });
 
 export const WorkspaceRecoveryInspectRequestSchema = z.object({
@@ -3388,6 +3436,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceLabelUpdateRequestSchema,
   WorkspaceLabelDeleteRequestSchema,
   WorkspaceLabelDeleteInspectRequestSchema,
+  WorkspaceStatusListRequestSchema,
+  WorkspaceStatusCreateRequestSchema,
+  WorkspaceStatusUpdateRequestSchema,
+  WorkspaceStatusDeleteRequestSchema,
+  WorkspaceStatusAssignmentSetRequestSchema,
   WorkspaceRecoveryInspectRequestSchema,
   WorkspaceRecoveryRestoreRequestSchema,
   SetVoiceModeMessageSchema,
@@ -3765,6 +3818,8 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        // COMPAT(workspaceStatuses): added in v0.12.0, remove gate after 2027-10-19.
+        workspaceStatuses: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.8.0, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(checkoutSetBaseRef): added in v0.8.x, remove gate after 2027-10-07.
@@ -4260,6 +4315,8 @@ export const WorkspaceDescriptorPayloadSchema = z
     pinnedAt: z.string().nullable().optional(),
     // COMPAT(workspaceLabels): added in v0.5.0, remove optional after 2027-08-14.
     labels: z.array(z.string()).optional(),
+    // COMPAT(workspaceStatuses): added in v0.12.0, remove optional after 2027-10-19.
+    manualStatus: WorkspaceManualStatusSchema.nullable().optional(),
     // Retained for wire parsing of older daemon descriptors.
     internal: z.boolean().optional(),
     background: z.boolean().optional(),
@@ -4556,6 +4613,52 @@ export const WorkspaceLabelDeleteInspectResponseSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     affectedWorkspaceCount: z.number().int().nonnegative(),
+  }),
+});
+
+export const WorkspaceStatusListResponseSchema = z.object({
+  type: z.literal("workspace.status.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    subscriptionId: z.string().optional(),
+    statuses: z.array(WorkspaceStatusDefinitionSchema),
+  }),
+});
+/** Subscription push: the full catalog after every change. Catalogs are small. */
+export const WorkspaceStatusCatalogChangedSchema = z.object({
+  type: z.literal("workspace.status.catalog.changed"),
+  payload: z.object({
+    subscriptionId: z.string().optional(),
+    statuses: z.array(WorkspaceStatusDefinitionSchema),
+  }),
+});
+export const WorkspaceStatusCreateResponseSchema = z.object({
+  type: z.literal("workspace.status.create.response"),
+  payload: z.object({
+    requestId: z.string(),
+    status: WorkspaceStatusDefinitionSchema,
+  }),
+});
+export const WorkspaceStatusUpdateResponseSchema = z.object({
+  type: z.literal("workspace.status.update.response"),
+  payload: z.object({
+    requestId: z.string(),
+    status: WorkspaceStatusDefinitionSchema,
+  }),
+});
+export const WorkspaceStatusDeleteResponseSchema = z.object({
+  type: z.literal("workspace.status.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    affectedWorkspaceCount: z.number().int().nonnegative(),
+  }),
+});
+export const WorkspaceStatusAssignmentSetResponseSchema = z.object({
+  type: z.literal("workspace.status.assignment.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    manualStatus: WorkspaceManualStatusSchema.nullable(),
   }),
 });
 
@@ -7294,6 +7397,12 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceLabelUpdateResponseSchema,
   WorkspaceLabelDeleteResponseSchema,
   WorkspaceLabelDeleteInspectResponseSchema,
+  WorkspaceStatusListResponseSchema,
+  WorkspaceStatusCatalogChangedSchema,
+  WorkspaceStatusCreateResponseSchema,
+  WorkspaceStatusUpdateResponseSchema,
+  WorkspaceStatusDeleteResponseSchema,
+  WorkspaceStatusAssignmentSetResponseSchema,
   ProjectUpdateMessageSchema,
   ProjectListResponseMessageSchema,
   ScriptStatusUpdateMessageSchema,
@@ -7506,6 +7615,8 @@ export type AgentStatusMessage = z.infer<typeof AgentStatusMessageSchema>;
 export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePayloadSchema>;
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
+export type WorkspaceStatusDefinition = z.infer<typeof WorkspaceStatusDefinitionSchema>;
+export type WorkspaceManualStatus = z.infer<typeof WorkspaceManualStatusSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
 export type WorkspaceProjectDescriptorPayload = z.infer<
   typeof WorkspaceProjectDescriptorPayloadSchema
