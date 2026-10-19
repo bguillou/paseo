@@ -1203,6 +1203,18 @@ export const ru: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "Нет рабочих пространств",
+      menu: "Параметры столбца «{{name}}»",
+      moveLeft: "Переместить влево",
+      moveRight: "Переместить вправо",
+    },
+    errors: {
+      statusUnavailable: "На хосте этого рабочего пространства нет статуса «{{status}}»",
+    },
+  },
   workspaceStatuses: {
     title: "Статус",
     automatic: "Автоматически",
@@ -1377,6 +1389,7 @@ export const ru: TranslationResources = {
       sessions: "История",
       search: "Поиск",
       schedules: "Расписания",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "Настроить скрипты worktree",

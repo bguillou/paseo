@@ -1194,6 +1194,18 @@ export const en = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "No workspaces",
+      menu: "{{name}} column options",
+      moveLeft: "Move left",
+      moveRight: "Move right",
+    },
+    errors: {
+      statusUnavailable: "This workspace's host has no “{{status}}” status",
+    },
+  },
   workspaceStatuses: {
     title: "Status",
     automatic: "Automatic",
@@ -1367,6 +1379,7 @@ export const en = {
       sessions: "History",
       search: "Search",
       schedules: "Schedules",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",

@@ -65,63 +65,75 @@ export type PrStatusGroupLeading =
   | { kind: "custom"; color: WorkspaceStatusDefinition["color"] };
 
 export interface PrStatusGroup {
-  /** The auto bucket, or `custom:` plus the lowercased name, so hosts sharing a name share a group. */
+  /** See `customPrStatusGroupId`. */
   id: string;
   label: string;
   leading: PrStatusGroupLeading;
   rows: SidebarWorkspaceEntry[];
 }
 
-function customGroupId(status: WorkspaceStatusDefinition): string {
+/** The auto bucket, or `custom:` plus the lowercased name, so hosts sharing a name share a group. */
+export function customPrStatusGroupId(status: WorkspaceStatusDefinition): string {
   return `custom:${status.name.toLowerCase()}`;
 }
 
+export function effectivePrStatusGroupId(effective: EffectivePrStatus): string {
+  return effective.kind === "auto" ? effective.bucket : customPrStatusGroupId(effective.status);
+}
+
 /**
- * Auto buckets in their fixed order, then custom statuses in catalog order, hosts taken in
- * serverId order. Only non-empty groups are returned.
+ * Every group, empty ones included: auto buckets in their fixed order, then custom statuses in
+ * catalog order, hosts taken in serverId order. The kanban needs the empty ones as drop targets.
  */
+export function buildAllPrStatusGroups(
+  workspaces: SidebarWorkspaceEntry[],
+  projectNamesByViewKey: Map<string, string>,
+  catalogs: WorkspaceStatusCatalogs,
+  t: TFunction,
+): PrStatusGroup[] {
+  const ordered = new Map<string, PrStatusGroup>();
+  for (const bucket of PR_STATUS_BUCKET_ORDER) {
+    ordered.set(bucket, {
+      id: bucket,
+      label: getPrStatusBucketLabel(bucket, t),
+      leading: { kind: "auto", bucket },
+      rows: [],
+    });
+  }
+  for (const serverId of Object.keys(catalogs).sort()) {
+    for (const status of catalogs[serverId] ?? []) {
+      const id = customPrStatusGroupId(status);
+      if (!ordered.has(id)) {
+        ordered.set(id, {
+          id,
+          label: status.name,
+          leading: { kind: "custom", color: status.color },
+          rows: [],
+        });
+      }
+    }
+  }
+
+  for (const ws of workspaces) {
+    const id = effectivePrStatusGroupId(resolveEffectivePrStatus(ws, catalogs));
+    ordered.get(id)?.rows.push(ws);
+  }
+
+  const groups = [...ordered.values()];
+  for (const group of groups) {
+    group.rows.sort((a, b) => compareSidebarWorkspaceRows(a, b, projectNamesByViewKey));
+  }
+  return groups;
+}
+
+/** The sidebar's PR-status grouping: `buildAllPrStatusGroups` without the empty groups. */
 export function buildPrStatusGroups(
   workspaces: SidebarWorkspaceEntry[],
   projectNamesByViewKey: Map<string, string>,
   catalogs: WorkspaceStatusCatalogs,
   t: TFunction,
 ): PrStatusGroup[] {
-  const ordered = new Map<string, Omit<PrStatusGroup, "rows">>();
-  for (const bucket of PR_STATUS_BUCKET_ORDER) {
-    ordered.set(bucket, {
-      id: bucket,
-      label: getPrStatusBucketLabel(bucket, t),
-      leading: { kind: "auto", bucket },
-    });
-  }
-  for (const serverId of Object.keys(catalogs).sort()) {
-    for (const status of catalogs[serverId] ?? []) {
-      const id = customGroupId(status);
-      if (!ordered.has(id)) {
-        ordered.set(id, {
-          id,
-          label: status.name,
-          leading: { kind: "custom", color: status.color },
-        });
-      }
-    }
-  }
-
-  const rowsById = new Map<string, SidebarWorkspaceEntry[]>();
-  for (const ws of workspaces) {
-    const effective = resolveEffectivePrStatus(ws, catalogs);
-    const id = effective.kind === "auto" ? effective.bucket : customGroupId(effective.status);
-    const rows = rowsById.get(id);
-    if (rows) rows.push(ws);
-    else rowsById.set(id, [ws]);
-  }
-
-  const groups: PrStatusGroup[] = [];
-  for (const group of ordered.values()) {
-    const rows = rowsById.get(group.id);
-    if (!rows || rows.length === 0) continue;
-    rows.sort((a, b) => compareSidebarWorkspaceRows(a, b, projectNamesByViewKey));
-    groups.push({ ...group, rows });
-  }
-  return groups;
+  return buildAllPrStatusGroups(workspaces, projectNamesByViewKey, catalogs, t).filter(
+    (group) => group.rows.length > 0,
+  );
 }

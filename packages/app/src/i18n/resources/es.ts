@@ -1219,6 +1219,18 @@ export const es: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "Sin espacios de trabajo",
+      menu: "Opciones de la columna {{name}}",
+      moveLeft: "Mover a la izquierda",
+      moveRight: "Mover a la derecha",
+    },
+    errors: {
+      statusUnavailable: "El host de este espacio de trabajo no tiene el estado «{{status}}»",
+    },
+  },
   workspaceStatuses: {
     title: "Estado",
     automatic: "Automático",
@@ -1395,6 +1407,7 @@ export const es: TranslationResources = {
       sessions: "Historial",
       search: "Buscar",
       schedules: "Horarios",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "Configurar secuencias de comandos del árbol de trabajo",

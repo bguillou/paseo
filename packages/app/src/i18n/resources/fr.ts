@@ -1210,6 +1210,18 @@ export const fr: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "Aucun espace de travail",
+      menu: "Options de la colonne {{name}}",
+      moveLeft: "Déplacer à gauche",
+      moveRight: "Déplacer à droite",
+    },
+    errors: {
+      statusUnavailable: "L’hôte de cet espace de travail n’a pas de statut « {{status}} »",
+    },
+  },
   workspaceStatuses: {
     title: "Statut",
     automatic: "Automatique",
@@ -1387,6 +1399,7 @@ export const fr: TranslationResources = {
       sessions: "Historique",
       search: "Recherche",
       schedules: "Planifications",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "Configurer les scripts de worktree",

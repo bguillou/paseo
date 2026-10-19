@@ -1199,6 +1199,18 @@ export const ja: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "ワークスペースはありません",
+      menu: "{{name}} 列のオプション",
+      moveLeft: "左へ移動",
+      moveRight: "右へ移動",
+    },
+    errors: {
+      statusUnavailable: "このワークスペースのホストには「{{status}}」ステータスがありません",
+    },
+  },
   workspaceStatuses: {
     title: "ステータス",
     automatic: "自動",
@@ -1373,6 +1385,7 @@ export const ja: TranslationResources = {
       sessions: "履歴",
       search: "検索",
       schedules: "スケジュール",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "ワークツリースクリプトを設定",

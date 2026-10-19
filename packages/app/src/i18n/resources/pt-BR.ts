@@ -1209,6 +1209,18 @@ export const ptBR: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "Nenhum workspace",
+      menu: "Opções da coluna {{name}}",
+      moveLeft: "Mover para a esquerda",
+      moveRight: "Mover para a direita",
+    },
+    errors: {
+      statusUnavailable: "O host deste workspace não tem o status “{{status}}”",
+    },
+  },
   workspaceStatuses: {
     title: "Status",
     automatic: "Automático",
@@ -1385,6 +1397,7 @@ export const ptBR: TranslationResources = {
       sessions: "Histórico",
       search: "Buscar",
       schedules: "Agendamentos",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "Configurar scripts de worktree",

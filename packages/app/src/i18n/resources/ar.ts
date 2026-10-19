@@ -1186,6 +1186,18 @@ export const ar: TranslationResources = {
       },
     },
   },
+  kanban: {
+    title: "Kanban",
+    column: {
+      empty: "لا توجد مساحات عمل",
+      menu: "خيارات عمود {{name}}",
+      moveLeft: "نقل لليسار",
+      moveRight: "نقل لليمين",
+    },
+    errors: {
+      statusUnavailable: "لا يحتوي مضيف مساحة العمل هذه على الحالة “{{status}}”",
+    },
+  },
   workspaceStatuses: {
     title: "الحالة",
     automatic: "تلقائي",
@@ -1359,6 +1371,7 @@ export const ar: TranslationResources = {
       sessions: "السجل",
       search: "بحث",
       schedules: "الجداول",
+      kanban: "Kanban",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",
