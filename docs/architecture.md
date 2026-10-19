@@ -73,21 +73,22 @@ not retain non-Git directories.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay   |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing         |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations          |
-| `server/directory-sync/`        | Daemon-global latest-state sequences for projects, workspaces, and agents      |
-| `server/workspace-labels/`      | Host-local label catalog, assignment mutations, and explicit subscriptions     |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management        |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                          |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation  |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK        |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                |
-| `server/orchestration-skills/`  | Bundled catalog, host selection, convergence, and skill-directory transactions |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                  |
-| `server/schedule/`              | Cron-based scheduled agents                                                    |
+| Module                               | Responsibility                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `server/bootstrap.ts`                | Daemon initialization: HTTP server, WS server, agent manager, storage, relay   |
+| `server/websocket-server.ts`         | WebSocket connection management, hello handshake, binary frame routing         |
+| `server/session.ts`                  | Per-client session state, timeline subscriptions, terminal operations          |
+| `server/directory-sync/`             | Daemon-global latest-state sequences for projects, workspaces, and agents      |
+| `server/workspace-labels/`           | Host-local label catalog, assignment mutations, and explicit subscriptions     |
+| `server/workspace-status-service.ts` | Host-local custom status catalog and manual status assignment                  |
+| `server/agent/agent-manager.ts`      | Agent lifecycle state machine, timeline tracking, subscriber management        |
+| `server/agent/agent-storage.ts`      | File-backed JSON persistence at `$PASEO_HOME/agents/`                          |
+| `server/agent/tools/`                | Transport-neutral catalog for workspaces, agents, permissions, and automation  |
+| `server/agent/mcp-server.ts`         | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK        |
+| `server/agent/providers/`            | Provider adapters (see "Agent providers" below)                                |
+| `server/orchestration-skills/`       | Bundled catalog, host selection, convergence, and skill-directory transactions |
+| `server/relay-transport.ts`          | Outbound relay connection with E2E encryption                                  |
+| `server/schedule/`                   | Cron-based scheduled agents                                                    |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -117,6 +118,7 @@ Cross-platform React Native app that connects to one or more daemons.
 - `runtime/replica-cache` is typed storage behind the directory and timeline owners. It never observes or mutates `SessionStore`.
 - `runtime/directory-sync` owns directory cache selection and network reconciliation. On demand it paints accepted rows for one host, then passes the persisted per-entity cursor through `project.list`, `fetch_workspaces`, and `fetch_agents`; the daemon returns each entity's latest projection when its sequence is newer, plus tombstones.
 - `workspace-labels` owns one sequenced catalog replica per connected host, the deterministic cross-host projection that surfaces spanning hosts use (the filter page, the manager), and the per-host resolution a workspace row's chips use. Two hosts may give one name different colors, so a row resolves against its own host's catalog and a merged answer would be wrong there. Catalogs never synchronize between hosts; assignment creates a missing definition only on the target host. On the daemon, catalog and assignment rewrites share a journaled commit boundary. Startup recovery completes that commit before workspace or catalog publication.
+- `workspace-statuses` keeps one custom status catalog per connected host and the manual status menu and manager. Custom statuses have stable ids, so a rename rewrites the catalog only; the daemon pushes the whole catalog on every change instead of a sequenced journal. Deleting a status writes the catalog before clearing assignments, and a dangling id resolves to the derived status.
 - `SessionContext` wraps the daemon client for the active session
 - Composer UI and submit/draft behavior live in `packages/app/src/composer/`; screens and panels should integrate it from there instead of dropping composer internals into `components/`, `hooks/`, or `screens/workspace/`
 - Timeline reducers in `timeline/session-stream-reducers.ts` handle compaction, gap detection, sequence-based deduplication

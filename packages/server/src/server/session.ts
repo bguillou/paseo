@@ -100,6 +100,7 @@ import {
   WorkspaceLabelStorageUncertainError,
   type WorkspaceLabelService,
 } from "./workspace-labels/index.js";
+import { WorkspaceStatusError, type WorkspaceStatusService } from "./workspace-status-service.js";
 
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
@@ -475,6 +476,7 @@ export interface SessionOptions {
   resolveEffectiveProjectConfig?: (cwd: string) => Promise<PaseoConfig | null>;
   directorySync?: DirectorySyncService;
   workspaceLabelService?: WorkspaceLabelService;
+  workspaceStatusService?: WorkspaceStatusService;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
   checkoutDiffManager: CheckoutDiffManager;
@@ -778,6 +780,7 @@ export class Session {
     WorkspaceUpdatesSubscriptionState
   >();
   private readonly workspaceLabelService: WorkspaceLabelService | null;
+  private readonly workspaceStatusService: WorkspaceStatusService | undefined;
   private readonly eventSubscriptions = new Map<
     string,
     { owner: OwnedSubscription; events: Set<SessionEventSubscription>; notifications: boolean }
@@ -839,6 +842,7 @@ export class Session {
       resolveEffectiveProjectConfig,
       directorySync,
       workspaceLabelService,
+      workspaceStatusService,
       filesystem,
       scheduleService,
       checkoutDiffManager,
@@ -914,6 +918,7 @@ export class Session {
     this.resolveEffectiveProjectConfig = resolveEffectiveProjectConfig;
     this.directorySync = resolveDirectorySync(directorySync);
     this.workspaceLabelService = resolveWorkspaceLabelService(workspaceLabelService);
+    this.workspaceStatusService = workspaceStatusService;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
@@ -2366,6 +2371,7 @@ export class Session {
     return (
       this.dispatchWorkspaceStateMessage(msg) ??
       this.dispatchWorkspaceLabelMessage(msg) ??
+      this.dispatchWorkspaceStatusMessage(msg) ??
       this.dispatchWorkspaceSetupMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg)
     );
@@ -3016,6 +3022,20 @@ export class Session {
         return this.handleWorkspaceLabelDelete(msg);
       case "workspace.label.delete.inspect.request":
         return this.handleWorkspaceLabelDeleteInspection(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchWorkspaceStatusMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "workspace.status.list.request":
+        return this.handleWorkspaceStatusList(msg);
+      case "workspace.status.create.request":
+      case "workspace.status.update.request":
+      case "workspace.status.delete.request":
+      case "workspace.status.assignment.set.request":
+        return this.handleWorkspaceStatusMutation(msg);
       default:
         return undefined;
     }
@@ -5657,6 +5677,7 @@ export class Session {
       title: workspace.title,
       pinnedAt: workspace.pinnedAt,
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
+      manualStatus: workspace.manualStatus ?? null,
       background: workspace.background,
       archivingAt: null,
       status: "done",
@@ -6639,6 +6660,135 @@ export class Session {
       });
     } catch (error) {
       this.emitWorkspaceLabelError(request, error);
+    }
+  }
+
+  private requireWorkspaceStatuses(): WorkspaceStatusService {
+    if (!this.workspaceStatusService) {
+      throw new SessionRequestError(
+        "workspace_statuses_unavailable",
+        "Workspace statuses unavailable",
+      );
+    }
+    return this.workspaceStatusService;
+  }
+
+  private emitWorkspaceStatusError(
+    request: { requestId: string; type: string },
+    error: unknown,
+  ): void {
+    this.emit({
+      type: "rpc_error",
+      payload: {
+        requestId: request.requestId,
+        requestType: request.type,
+        code:
+          error instanceof WorkspaceStatusError || error instanceof SessionRequestError
+            ? error.code
+            : "workspace_status_failed",
+        error: error instanceof Error ? error.message : "Workspace status operation failed",
+      },
+    });
+  }
+
+  private async handleWorkspaceStatusList(
+    request: Extract<SessionInboundMessage, { type: "workspace.status.list.request" }>,
+  ): Promise<void> {
+    try {
+      const service = this.requireWorkspaceStatuses();
+      if (!request.subscribe) {
+        this.emit({
+          type: "workspace.status.list.response",
+          payload: { requestId: request.requestId, statuses: await service.list() },
+        });
+        return;
+      }
+      let unsubscribe: (() => void) | undefined;
+      const owner = this.delivery.begin("statuses", request.subscribe.subscriptionId, () => {
+        unsubscribe?.();
+      });
+      try {
+        let ready = false;
+        let pending: Parameters<Parameters<typeof service.observe>[0]>[0] | undefined;
+        const emitChange = (statuses: NonNullable<typeof pending>): void => {
+          owner.emit({ type: "workspace.status.catalog.changed", payload: { statuses } });
+        };
+        const observed = await service.observe((statuses) => {
+          if (owner.signal.aborted) return;
+          if (ready) emitChange(statuses);
+          else pending = statuses;
+        });
+        unsubscribe = observed.unsubscribe;
+        if (owner.signal.aborted) {
+          unsubscribe();
+          return;
+        }
+        this.emit({
+          type: "workspace.status.list.response",
+          payload: {
+            requestId: request.requestId,
+            subscriptionId: owner.responseId,
+            statuses: observed.statuses,
+          },
+        });
+        ready = true;
+        if (pending) emitChange(pending);
+      } catch (error) {
+        await owner.release();
+        throw error;
+      }
+    } catch (error) {
+      this.emitWorkspaceStatusError(request, error);
+    }
+  }
+
+  private async handleWorkspaceStatusMutation(
+    request: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "workspace.status.create.request"
+          | "workspace.status.update.request"
+          | "workspace.status.delete.request"
+          | "workspace.status.assignment.set.request";
+      }
+    >,
+  ): Promise<void> {
+    const { requestId } = request;
+    try {
+      const service = this.requireWorkspaceStatuses();
+      switch (request.type) {
+        case "workspace.status.create.request":
+          this.emit({
+            type: "workspace.status.create.response",
+            payload: { requestId, status: await service.create(request) },
+          });
+          return;
+        case "workspace.status.update.request":
+          this.emit({
+            type: "workspace.status.update.response",
+            payload: { requestId, status: await service.update(request) },
+          });
+          return;
+        case "workspace.status.delete.request":
+          this.emit({
+            type: "workspace.status.delete.response",
+            payload: { requestId, ...(await service.delete(request.id)) },
+          });
+          return;
+        case "workspace.status.assignment.set.request":
+          this.emit({
+            type: "workspace.status.assignment.set.response",
+            payload: {
+              requestId,
+              workspaceId: request.workspaceId,
+              manualStatus: await service.setAssignment(request),
+            },
+          });
+          return;
+      }
+    } catch (error) {
+      this.emitWorkspaceStatusError(request, error);
     }
   }
 

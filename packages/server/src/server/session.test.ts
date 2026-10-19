@@ -30,7 +30,8 @@ import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { WorkspaceLabelError, type WorkspaceLabelService } from "./workspace-labels/index.js";
-import { createPersistedProjectRecord } from "./workspace-registry.js";
+import { createPersistedProjectRecord, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
+import { WorkspaceStatusService } from "./workspace-status-service.js";
 import { deriveProjectKey } from "./project-key.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
@@ -332,6 +333,7 @@ interface SessionForTestOptions {
   pluginRuntime?: SessionOptions["pluginRuntime"];
   orchestrationSkills?: SessionOptions["orchestrationSkills"];
   workspaceLabelService?: WorkspaceLabelService;
+  workspaceStatusService?: WorkspaceStatusService;
 }
 
 function createSessionForTest(options: SessionForTestOptions = {}): Session {
@@ -412,6 +414,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       list: vi.fn().mockResolvedValue([]),
     },
     workspaceLabelService: options.workspaceLabelService,
+    workspaceStatusService: options.workspaceStatusService,
     scheduleService: asScheduleService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
@@ -740,6 +743,93 @@ describe("workspace label editing", () => {
           requestType: "workspace.label.update.request",
           code: "label_name_taken",
           error: "A label with that name already exists",
+        },
+      },
+    ]);
+  });
+});
+
+describe("workspace status RPCs", () => {
+  let paseoHome: string | undefined;
+
+  afterEach(() => {
+    if (paseoHome) rmSync(paseoHome, { recursive: true, force: true });
+    paseoHome = undefined;
+  });
+
+  function createStatusService(): WorkspaceStatusService {
+    paseoHome = mkdtempSync(join(tmpdir(), "paseo-session-statuses-"));
+    return new WorkspaceStatusService({
+      filePath: join(paseoHome, "workspace-statuses.json"),
+      workspaceRegistry: new FileBackedWorkspaceRegistry(
+        join(paseoHome, "workspaces.json"),
+        pino({ level: "silent" }),
+      ),
+      createId: () => "sts_1",
+    });
+  }
+
+  test("a subscription answers with the catalog, pushes changes, and stops after cleanup", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const statuses = createStatusService();
+    const session = createSessionForTest({ messages, workspaceStatusService: statuses });
+
+    await session.handleMessage({
+      type: "workspace.status.list.request",
+      requestId: "request-list",
+      subscribe: { subscriptionId: "statuses-1" },
+    });
+    await session.handleMessage({
+      type: "workspace.status.create.request",
+      requestId: "request-create",
+      name: "Blocked",
+      color: "red",
+    });
+    await session.cleanup();
+    await statuses.update({ id: "sts_1", color: "sky" });
+
+    const blocked = { id: "sts_1", name: "Blocked", color: "red" };
+    expect(messages.slice(0, 3)).toEqual([
+      {
+        type: "workspace.status.list.response",
+        payload: { requestId: "request-list", subscriptionId: "statuses-1", statuses: [] },
+      },
+      {
+        type: "workspace.status.catalog.changed",
+        payload: expect.objectContaining({ statuses: [blocked] }),
+      },
+      {
+        type: "workspace.status.create.response",
+        payload: { requestId: "request-create", status: blocked },
+      },
+    ]);
+    expect(
+      messages.filter((message) => message.type === "workspace.status.catalog.changed"),
+    ).toHaveLength(1);
+  });
+
+  test("reports an unknown status as a coded error", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({
+      messages,
+      workspaceStatusService: createStatusService(),
+    });
+
+    await session.handleMessage({
+      type: "workspace.status.assignment.set.request",
+      requestId: "request-assign",
+      workspaceId: "wks_one",
+      manualStatus: { statusId: "sts_unknown", baseline: "backlog" },
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "request-assign",
+          requestType: "workspace.status.assignment.set.request",
+          code: "status_not_found",
+          error: "Status not found",
         },
       },
     ]);

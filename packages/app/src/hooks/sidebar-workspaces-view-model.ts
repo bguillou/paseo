@@ -44,6 +44,7 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   title: string | null;
   pinnedAt?: string | null;
   labels?: string[];
+  manualStatus?: WorkspaceDescriptor["manualStatus"];
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
   // Base branch display name the workspace is compared/merged against (null when unknown).
@@ -175,6 +176,7 @@ export function createSidebarWorkspaceEntry(input: {
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
     labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,
+    manualStatus: input.workspace.manualStatus ?? null,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     baseRef: input.workspace.gitRuntime?.baseRef ?? null,
     statusBucket: effectiveStatus.status,

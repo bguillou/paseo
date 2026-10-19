@@ -861,6 +861,22 @@ export type WorkspaceLabelDeletePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.delete.response" }
 >["payload"];
+export type WorkspaceStatusListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.status.list.response" }
+>["payload"];
+export type WorkspaceStatusDefinitionPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.status.create.response" }
+>["payload"];
+export type WorkspaceStatusDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.status.delete.response" }
+>["payload"];
+export type WorkspaceStatusAssignmentPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.status.assignment.set.response" }
+>["payload"];
 export type WorkspaceLabelDeleteInspectPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.delete.inspect.response" }
@@ -2646,6 +2662,76 @@ export class DaemonClient {
       message: {
         type: "workspace.label.delete.inspect.request",
         name: options.name,
+      },
+    });
+  }
+
+  observeWorkspaceStatuses(options?: {
+    signal?: AbortSignal;
+  }): OwnedSubscription<WorkspaceStatusListPayload> {
+    return this.observe(
+      "workspace.status.list.response",
+      { type: "workspace.status.list.request", subscribe: {} },
+      options,
+    );
+  }
+
+  createWorkspaceStatus(options: {
+    name: string;
+    color: Extract<SessionInboundMessage, { type: "workspace.status.create.request" }>["color"];
+    requestId?: string;
+  }): Promise<WorkspaceStatusDefinitionPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.status.create.response">({
+      requestId: options.requestId,
+      message: {
+        type: "workspace.status.create.request",
+        name: options.name,
+        color: options.color,
+      },
+    });
+  }
+
+  updateWorkspaceStatus(options: {
+    id: string;
+    name?: string;
+    color?: Extract<SessionInboundMessage, { type: "workspace.status.update.request" }>["color"];
+    requestId?: string;
+  }): Promise<WorkspaceStatusDefinitionPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.status.update.response">({
+      requestId: options.requestId,
+      message: {
+        type: "workspace.status.update.request",
+        id: options.id,
+        ...(options.name === undefined ? {} : { name: options.name }),
+        ...(options.color === undefined ? {} : { color: options.color }),
+      },
+    });
+  }
+
+  deleteWorkspaceStatus(options: {
+    id: string;
+    requestId?: string;
+  }): Promise<WorkspaceStatusDeletePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.status.delete.response">({
+      requestId: options.requestId,
+      message: { type: "workspace.status.delete.request", id: options.id },
+    });
+  }
+
+  setWorkspaceManualStatus(options: {
+    workspaceId: string;
+    manualStatus: Extract<
+      SessionInboundMessage,
+      { type: "workspace.status.assignment.set.request" }
+    >["manualStatus"];
+    requestId?: string;
+  }): Promise<WorkspaceStatusAssignmentPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.status.assignment.set.response">({
+      requestId: options.requestId,
+      message: {
+        type: "workspace.status.assignment.set.request",
+        workspaceId: options.workspaceId,
+        manualStatus: options.manualStatus,
       },
     });
   }

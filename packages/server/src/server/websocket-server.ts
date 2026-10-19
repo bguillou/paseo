@@ -104,6 +104,7 @@ import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import type { WorkspaceLabelService } from "./workspace-labels/index.js";
+import type { WorkspaceStatusService } from "./workspace-status-service.js";
 import {
   APPLICATION_SOCKET_LEASE_CHECK_INTERVAL_MS,
   ApplicationSocketLease,
@@ -549,6 +550,7 @@ export class VoiceAssistantWebSocketServer {
     | ((cwd: string) => Promise<PaseoConfig | null>)
     | undefined;
   private readonly workspaceLabelService: WorkspaceLabelService | null;
+  private readonly workspaceStatusService: WorkspaceStatusService | undefined;
   private readonly scheduleService: ScheduleService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: ForgeService;
@@ -668,6 +670,7 @@ export class VoiceAssistantWebSocketServer {
     orchestrationSkills?: SessionOptions["orchestrationSkills"],
     workspaceLabelService?: WorkspaceLabelService,
     resolveEffectiveProjectConfig?: (cwd: string) => Promise<PaseoConfig | null>,
+    workspaceStatusService?: WorkspaceStatusService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -697,6 +700,7 @@ export class VoiceAssistantWebSocketServer {
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.workspaceLabelService = workspaceLabelService ?? null;
+    this.workspaceStatusService = workspaceStatusService;
     this.resolveEffectiveProjectConfig = resolveEffectiveProjectConfig;
     const requiredServices = requireWebSocketServices({
       scheduleService,
@@ -1495,6 +1499,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceRegistry: this.workspaceRegistry,
       resolveEffectiveProjectConfig: this.resolveEffectiveProjectConfig,
       workspaceLabelService: this.workspaceLabelService ?? undefined,
+      workspaceStatusService: this.workspaceStatusService,
       directorySync: this.directorySync,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
@@ -1809,6 +1814,8 @@ export class VoiceAssistantWebSocketServer {
         directorySync: true,
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
+        // COMPAT(workspaceStatuses): added in v0.12.0, remove gate after 2027-10-19.
+        ...(this.workspaceStatusService ? { workspaceStatuses: true } : {}),
         // COMPAT(workspaceSetupRun): added in v0.7.3, remove gate after 2027-09-02.
         workspaceSetupRun: true,
         // COMPAT(checkoutSetBaseRef): added in v0.8.x, remove gate after 2027-10-07.

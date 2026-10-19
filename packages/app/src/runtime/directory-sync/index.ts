@@ -26,6 +26,7 @@ import {
   type DirectoryTransaction,
 } from "./transaction";
 import { workspaceLabels } from "@/workspace-labels";
+import { workspaceStatuses } from "@/workspace-statuses";
 import type {
   CachedDirectory,
   CachedWorkspace,
@@ -190,6 +191,7 @@ export class DirectorySync {
     this.flushAbortedTransactions();
     this.releaseSubscriptions();
     workspaceLabels.disconnect(this.serverId);
+    workspaceStatuses.disconnect(this.serverId);
     this.connection = connection;
     this.abortPendingSessionWaits();
     if (!connection.client || connection.status !== "online") return true;
@@ -233,6 +235,7 @@ export class DirectorySync {
     this.fullDemandSources.clear();
     this.routeDemandIds.clear();
     workspaceLabels.disconnect(this.serverId);
+    workspaceStatuses.disconnect(this.serverId);
   }
 
   private releaseSubscriptions(): void {
@@ -589,11 +592,18 @@ export class DirectorySync {
   async connectWorkspaceLabels(): Promise<void> {
     const { client } = this.requireOnline();
     const serverInfo = client.getLastServerInfoMessage();
-    await workspaceLabels.connect({
-      serverId: this.serverId,
-      client,
-      supportsWorkspaceLabels: serverInfo?.features?.workspaceLabels === true,
-    });
+    await Promise.all([
+      workspaceLabels.connect({
+        serverId: this.serverId,
+        client,
+        supportsWorkspaceLabels: serverInfo?.features?.workspaceLabels === true,
+      }),
+      workspaceStatuses.connect({
+        serverId: this.serverId,
+        client,
+        supportsWorkspaceStatuses: serverInfo?.features?.workspaceStatuses === true,
+      }),
+    ]);
   }
 
   acceptWorkspaces(workspaces: readonly WorkspaceDescriptor[]): void {
