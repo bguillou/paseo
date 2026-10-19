@@ -99,9 +99,34 @@ class WorkspaceStatusesController {
     workspaceId: string;
     manualStatus: WorkspaceManualStatus | null;
   }) {
-    const connection = this.connections.get(input.serverId);
+    return this.requireClient(input.serverId).setWorkspaceManualStatus(input);
+  }
+
+  async create(input: {
+    serverId: string;
+    name: string;
+    color: WorkspaceStatusDefinition["color"];
+  }) {
+    return this.requireClient(input.serverId).createWorkspaceStatus(input);
+  }
+
+  async update(input: {
+    serverId: string;
+    id: string;
+    name?: string;
+    color?: WorkspaceStatusDefinition["color"];
+  }) {
+    return this.requireClient(input.serverId).updateWorkspaceStatus(input);
+  }
+
+  async delete(input: { serverId: string; id: string }) {
+    return this.requireClient(input.serverId).deleteWorkspaceStatus(input);
+  }
+
+  private requireClient(serverId: string): DaemonClient {
+    const connection = this.connections.get(serverId);
     if (!connection) throw new Error(i18n.t("workspaceStatuses.errors.update"));
-    return connection.client.setWorkspaceManualStatus(input);
+    return connection.client;
   }
 
   /** Keeps the last catalog across offline/error so rows keep their custom status meanwhile. */

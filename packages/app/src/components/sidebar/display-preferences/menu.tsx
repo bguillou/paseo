@@ -58,6 +58,8 @@ import { SIDEBAR_ROW_ITEMS, type SidebarRowItem } from "./row-items";
 import { useWorkspaceLabelProjection } from "@/workspace-labels";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import { WorkspaceLabelManagerModal } from "@/workspace-labels/manager-modal";
+import { useWorkspaceStatuses } from "@/workspace-statuses";
+import { WorkspaceStatusManagerModal } from "@/workspace-statuses/manager-modal";
 
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -174,6 +176,12 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
   const [managerOpen, setManagerOpen] = useState(false);
   const openManager = useCallback(() => setManagerOpen(true), []);
   const closeManager = useCallback(() => setManagerOpen(false), []);
+  const [statusManagerOpen, setStatusManagerOpen] = useState(false);
+  const openStatusManager = useCallback(() => setStatusManagerOpen(true), []);
+  const closeStatusManager = useCallback(() => setStatusManagerOpen(false), []);
+  const canManageStatuses = useWorkspaceStatuses((state) =>
+    Object.values(state.hosts).some((host) => host.status === "online"),
+  );
 
   const triggerStyle = useCallback(
     ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -197,14 +205,24 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
         id: "grouping",
         title: t("sidebar.display.grouping.label"),
         content: (
-          <OptionList
-            values={GROUPING_MODES}
-            icons={GROUPING_ICONS}
-            labelKeys={GROUPING_LABEL_KEYS}
-            selectedValue={preferences.grouping}
-            onSelect={preferences.setGrouping}
-            testIDPrefix="sidebar-grouping"
-          />
+          <>
+            <OptionList
+              values={GROUPING_MODES}
+              icons={GROUPING_ICONS}
+              labelKeys={GROUPING_LABEL_KEYS}
+              selectedValue={preferences.grouping}
+              onSelect={preferences.setGrouping}
+              testIDPrefix="sidebar-grouping"
+            />
+            {canManageStatuses ? (
+              <>
+                <MenuSeparator />
+                <MenuItem onSelect={openStatusManager} testID="sidebar-status-manage">
+                  {t("workspaceStatuses.manage.open")}
+                </MenuItem>
+              </>
+            ) : null}
+          </>
         ),
       },
       {
@@ -283,6 +301,8 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
     showLabelFilter,
     labels,
     openManager,
+    canManageStatuses,
+    openStatusManager,
   ]);
 
   return (
@@ -371,6 +391,7 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
         </MenuSurface>
       </MenuRoot>
       <WorkspaceLabelManagerModal visible={managerOpen} onClose={closeManager} />
+      <WorkspaceStatusManagerModal visible={statusManagerOpen} onClose={closeStatusManager} />
     </>
   );
 }
