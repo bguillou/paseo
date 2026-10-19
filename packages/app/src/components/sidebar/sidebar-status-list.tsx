@@ -23,6 +23,8 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { StatusBucket } from "@/hooks/sidebar-status-view-model";
 import type { PrStatusBucket } from "@/hooks/sidebar-pr-status-view-model";
+import { WORKSPACE_LABEL_COLORS } from "@getpaseo/protocol/workspace-labels";
+import { WORKSPACE_LABEL_ICON_MAPPINGS } from "@/workspace-labels/swatch";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import { SidebarFilterEmptyState } from "@/components/sidebar/empty-states";
 import type { HostBadgeModel } from "@/hosts/appearance";
@@ -35,6 +37,7 @@ import { withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
   ChevronRight,
+  Circle,
   CircleAlert,
   CircleCheck,
   CircleDashed,
@@ -105,6 +108,7 @@ const runningGroupIconProps = densityIconProps("sm", (theme) => ({
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedCircle = withUnistyles(Circle);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDashed = withUnistyles(CircleDashed);
@@ -112,6 +116,13 @@ const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleX = withUnistyles(CircleX);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const EMPTY_SHORTCUT_INDEX = new Map<string, number>();
+// Built once per color: `withUnistyles` re-subscribes whenever `uniProps` changes identity.
+const CUSTOM_STATUS_GROUP_ICON_PROPS = new Map(
+  WORKSPACE_LABEL_COLORS.map((color) => [
+    color,
+    densityIconProps("sm", WORKSPACE_LABEL_ICON_MAPPINGS[color]),
+  ]),
+);
 
 function statusWorkspaceKeyExtractor(workspace: SidebarWorkspaceEntry): string {
   return workspace.workspaceKey;
@@ -472,11 +483,18 @@ function StatusGroupLeadingVisual({
   showChevron: boolean;
 }) {
   if (!showChevron) {
-    return leading.kind === "pr_status" ? (
-      <PrStatusGroupIcon bucket={leading.bucket} />
-    ) : (
-      <StatusGroupIcon bucket={leading.bucket} />
-    );
+    switch (leading.kind) {
+      case "pr_status":
+        return <PrStatusGroupIcon bucket={leading.bucket} />;
+      case "custom_status":
+        return (
+          <ThemedCircle
+            uniProps={CUSTOM_STATUS_GROUP_ICON_PROPS.get(leading.color) ?? mutedGroupIconProps}
+          />
+        );
+      case "status":
+        return <StatusGroupIcon bucket={leading.bucket} />;
+    }
   }
   if (collapsed) {
     return <ThemedChevronRight uniProps={mutedGroupIconProps} />;
@@ -1016,6 +1034,7 @@ function StatusWorkspaceActionSlot({
             serverId={workspace.serverId}
             workspaceId={workspace.workspaceId}
             workspaceLabels={workspace.labels}
+            statusWorkspace={workspace}
             onCopyPath={onCopyPath}
             onCopyBranchName={onCopyBranchName}
             onRename={onRename}

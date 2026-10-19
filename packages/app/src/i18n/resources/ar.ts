@@ -1186,6 +1186,11 @@ export const ar: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "الحالة",
+    automatic: "تلقائي",
+    errors: { update: "تعذّر تحديث الحالة", load: "تعذّر تحميل الحالات" },
+  },
   workspaceLabels: {
     title: "التسميات",
     unlabelled: "بلا تسمية",

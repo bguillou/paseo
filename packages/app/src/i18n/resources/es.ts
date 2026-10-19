@@ -1219,6 +1219,14 @@ export const es: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "Estado",
+    automatic: "Automático",
+    errors: {
+      update: "No se pudo actualizar el estado",
+      load: "No se pudieron cargar los estados",
+    },
+  },
   workspaceLabels: {
     title: "Etiquetas",
     unlabelled: "Sin etiqueta",

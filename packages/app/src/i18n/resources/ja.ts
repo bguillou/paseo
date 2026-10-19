@@ -1199,6 +1199,11 @@ export const ja: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "ステータス",
+    automatic: "自動",
+    errors: { update: "ステータスを更新できません", load: "ステータスを読み込めません" },
+  },
   workspaceLabels: {
     title: "ラベル",
     unlabelled: "ラベルなし",

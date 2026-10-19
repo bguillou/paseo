@@ -1178,6 +1178,11 @@ export const zhCN: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "状态",
+    automatic: "自动",
+    errors: { update: "无法更新状态", load: "无法加载状态" },
+  },
   workspaceLabels: {
     title: "标签",
     unlabelled: "无标签",

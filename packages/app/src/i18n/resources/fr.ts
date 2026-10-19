@@ -1210,6 +1210,14 @@ export const fr: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "Statut",
+    automatic: "Automatique",
+    errors: {
+      update: "Impossible de mettre à jour le statut",
+      load: "Impossible de charger les statuts",
+    },
+  },
   workspaceLabels: {
     title: "Étiquettes",
     unlabelled: "Sans étiquette",

@@ -7,6 +7,8 @@ import {
   derivePrStatusBucket,
   getPrStatusBucketLabel,
   PR_STATUS_BUCKET_ORDER,
+  resolveEffectivePrStatus,
+  type PrStatusGroup,
 } from "./sidebar-pr-status-view-model";
 
 function prHint(input: Partial<PrHint> & { state: PrHint["state"] }): PrHint {
@@ -48,6 +50,7 @@ function ws(
     scripts: [],
     hasRunningScripts: false,
     hasUserMessage: input.hasUserMessage ?? false,
+    manualStatus: input.manualStatus ?? null,
     workspaceKey: input.workspaceKey,
   };
 }
@@ -103,9 +106,9 @@ describe("buildPrStatusGroups", () => {
       ws({ workspaceKey: "srv:review", name: "review", prHint: prHint({ state: "open" }) }),
     ];
 
-    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, i18n.t);
+    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, {}, i18n.t);
 
-    expect(groups.map((g) => g.bucket)).toEqual(["in_review", "in_progress", "backlog", "done"]);
+    expect(groups.map((g) => g.id)).toEqual(["in_review", "in_progress", "backlog", "done"]);
     expect(groups.map((g) => g.label)).toEqual(["In review", "In progress", "Backlog", "Done"]);
   });
 
@@ -115,9 +118,9 @@ describe("buildPrStatusGroups", () => {
       ws({ workspaceKey: "srv:b", prHint: prHint({ state: "open" }) }),
     ];
 
-    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, i18n.t);
+    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, {}, i18n.t);
 
-    expect(groups.map((g) => g.bucket)).toEqual(["in_review", "done"]);
+    expect(groups.map((g) => g.id)).toEqual(["in_review", "done"]);
   });
 
   it("sorts by statusEnteredAt desc within a bucket", () => {
@@ -134,14 +137,99 @@ describe("buildPrStatusGroups", () => {
       }),
     ];
 
-    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, i18n.t);
+    const groups = buildPrStatusGroups(workspaces, emptyProjectNames, {}, i18n.t);
 
-    expect(groups[0]?.bucket).toBe("in_progress");
+    expect(groups[0]?.id).toBe("in_progress");
     expect(groups[0]?.rows.map((r) => r.workspaceKey)).toEqual(["srv:new", "srv:old"]);
   });
 
   it("returns empty array for no workspaces", () => {
-    expect(buildPrStatusGroups([], emptyProjectNames, i18n.t)).toEqual([]);
+    expect(buildPrStatusGroups([], emptyProjectNames, {}, i18n.t)).toEqual([]);
+  });
+});
+
+const blocked = { id: "sts_blocked", name: "Blocked", color: "red" } as const;
+const catalogs = { srv: [blocked] };
+
+function describeGroup(group: PrStatusGroup): [string, string, string[]] {
+  return [group.id, group.label, group.rows.map((row) => row.workspaceKey)];
+}
+describe("resolveEffectivePrStatus", () => {
+  it("shows the manual status while the derived bucket equals its baseline", () => {
+    const entry = ws({
+      workspaceKey: "srv:a",
+      hasUserMessage: true,
+      manualStatus: { statusId: blocked.id, baseline: "in_progress" },
+    });
+    expect(resolveEffectivePrStatus(entry, catalogs)).toEqual({ kind: "custom", status: blocked });
+  });
+
+  it("drops the manual status once the derived bucket moves away from the baseline", () => {
+    const entry = ws({
+      workspaceKey: "srv:a",
+      prHint: prHint({ state: "open" }),
+      manualStatus: { statusId: blocked.id, baseline: "in_progress" },
+    });
+    expect(resolveEffectivePrStatus(entry, catalogs)).toEqual({
+      kind: "auto",
+      bucket: "in_review",
+    });
+  });
+
+  it("accepts an auto status as the manual status", () => {
+    const entry = ws({
+      workspaceKey: "srv:a",
+      manualStatus: { statusId: "done", baseline: "backlog" },
+    });
+    expect(resolveEffectivePrStatus(entry, catalogs)).toEqual({ kind: "auto", bucket: "done" });
+  });
+
+  it("falls back to the derived bucket for a status its own host does not know", () => {
+    const manualStatus = { statusId: blocked.id, baseline: "backlog" } as const;
+    expect(resolveEffectivePrStatus(ws({ workspaceKey: "srv:a", manualStatus }), {})).toEqual({
+      kind: "auto",
+      bucket: "backlog",
+    });
+    expect(
+      resolveEffectivePrStatus(
+        ws({ workspaceKey: "other:a", serverId: "other", manualStatus }),
+        catalogs,
+      ),
+    ).toEqual({ kind: "auto", bucket: "backlog" });
+  });
+});
+
+describe("buildPrStatusGroups with custom statuses", () => {
+  it("puts custom groups after the auto buckets and merges same-named statuses across hosts", () => {
+    const qa = { id: "sts_qa", name: "QA", color: "sky" } as const;
+    const otherBlocked = { id: "sts_other", name: "blocked", color: "amber" } as const;
+    const workspaces = [
+      ws({
+        workspaceKey: "srv:a",
+        manualStatus: { statusId: blocked.id, baseline: "backlog" },
+      }),
+      ws({
+        workspaceKey: "other:b",
+        serverId: "other",
+        manualStatus: { statusId: otherBlocked.id, baseline: "backlog" },
+      }),
+      ws({ workspaceKey: "srv:c", manualStatus: { statusId: qa.id, baseline: "backlog" } }),
+      ws({ workspaceKey: "srv:d" }),
+    ];
+
+    const groups = buildPrStatusGroups(
+      workspaces,
+      emptyProjectNames,
+      { srv: [qa, blocked], other: [otherBlocked] },
+      i18n.t,
+    );
+
+    expect(groups.map(describeGroup)).toEqual([
+      ["backlog", "Backlog", ["srv:d"]],
+      ["custom:blocked", "blocked", ["other:b", "srv:a"]],
+      ["custom:qa", "QA", ["srv:c"]],
+    ]);
+    expect(groups[1]?.leading).toEqual({ kind: "custom", color: "amber" });
   });
 });
 

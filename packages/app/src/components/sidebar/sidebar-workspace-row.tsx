@@ -440,6 +440,7 @@ function WorkspaceRowTrailingActions({
                 serverId={workspace.serverId}
                 workspaceId={workspace.workspaceId}
                 workspaceLabels={workspace.labels}
+                statusWorkspace={workspace}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}
                 onRename={onRename}

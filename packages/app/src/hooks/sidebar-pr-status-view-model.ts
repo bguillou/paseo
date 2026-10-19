@@ -1,17 +1,18 @@
 import type { TFunction } from "i18next";
+import type { WorkspaceStatusDefinition } from "@getpaseo/protocol/messages";
+import {
+  WORKSPACE_AUTO_STATUSES,
+  type WorkspaceAutoStatus,
+} from "@getpaseo/protocol/workspace-statuses";
 import type { SidebarWorkspaceEntry } from "@/hooks/sidebar-workspaces-view-model";
 import { compareSidebarWorkspaceRows } from "@/hooks/sidebar-status-view-model";
+import type { WorkspaceStatusCatalogs } from "@/workspace-statuses";
 
-export type PrStatusBucket = "in_review" | "in_progress" | "backlog" | "done";
+export type PrStatusBucket = WorkspaceAutoStatus;
 
 // Actionable first, finished last: a PR awaiting review/merge sits above active work, which sits
 // above untouched workspaces, with merged work last — mirroring the status mode's "done last".
-export const PR_STATUS_BUCKET_ORDER: readonly PrStatusBucket[] = [
-  "in_review",
-  "in_progress",
-  "backlog",
-  "done",
-] as const;
+export const PR_STATUS_BUCKET_ORDER: readonly PrStatusBucket[] = WORKSPACE_AUTO_STATUSES;
 
 const PR_STATUS_BUCKET_LABEL_KEYS = {
   in_review: "sidebar.prStatusBucket.inReview",
@@ -37,38 +38,90 @@ export function derivePrStatusBucket(entry: SidebarWorkspaceEntry): PrStatusBuck
   return entry.hasUserMessage ? "in_progress" : "backlog";
 }
 
+export type EffectivePrStatus =
+  | { kind: "auto"; bucket: PrStatusBucket }
+  | { kind: "custom"; status: WorkspaceStatusDefinition };
+
+/**
+ * The status a workspace shows: its manual status while the derived bucket still equals the
+ * baseline it was assigned against, the derived bucket otherwise. A custom status missing from
+ * its host's catalog (deleted, or the catalog not loaded yet) also falls back to the derived one.
+ */
+export function resolveEffectivePrStatus(
+  entry: SidebarWorkspaceEntry,
+  catalogs: WorkspaceStatusCatalogs,
+): EffectivePrStatus {
+  const derived = derivePrStatusBucket(entry);
+  const manual = entry.manualStatus;
+  if (!manual || manual.baseline !== derived) return { kind: "auto", bucket: derived };
+  const autoBucket = PR_STATUS_BUCKET_ORDER.find((bucket) => bucket === manual.statusId);
+  if (autoBucket) return { kind: "auto", bucket: autoBucket };
+  const custom = catalogs[entry.serverId]?.find((status) => status.id === manual.statusId);
+  return custom ? { kind: "custom", status: custom } : { kind: "auto", bucket: derived };
+}
+
+export type PrStatusGroupLeading =
+  | { kind: "auto"; bucket: PrStatusBucket }
+  | { kind: "custom"; color: WorkspaceStatusDefinition["color"] };
+
 export interface PrStatusGroup {
-  bucket: PrStatusBucket;
+  /** The auto bucket, or `custom:` plus the lowercased name, so hosts sharing a name share a group. */
+  id: string;
   label: string;
+  leading: PrStatusGroupLeading;
   rows: SidebarWorkspaceEntry[];
 }
 
+function customGroupId(status: WorkspaceStatusDefinition): string {
+  return `custom:${status.name.toLowerCase()}`;
+}
+
+/**
+ * Auto buckets in their fixed order, then custom statuses in catalog order, hosts taken in
+ * serverId order. Only non-empty groups are returned.
+ */
 export function buildPrStatusGroups(
   workspaces: SidebarWorkspaceEntry[],
   projectNamesByViewKey: Map<string, string>,
+  catalogs: WorkspaceStatusCatalogs,
   t: TFunction,
 ): PrStatusGroup[] {
-  const bucketRows = new Map<PrStatusBucket, SidebarWorkspaceEntry[]>();
-
-  for (const ws of workspaces) {
-    const bucket = derivePrStatusBucket(ws);
-    let rows = bucketRows.get(bucket);
-    if (!rows) {
-      rows = [];
-      bucketRows.set(bucket, rows);
+  const ordered = new Map<string, Omit<PrStatusGroup, "rows">>();
+  for (const bucket of PR_STATUS_BUCKET_ORDER) {
+    ordered.set(bucket, {
+      id: bucket,
+      label: getPrStatusBucketLabel(bucket, t),
+      leading: { kind: "auto", bucket },
+    });
+  }
+  for (const serverId of Object.keys(catalogs).sort()) {
+    for (const status of catalogs[serverId] ?? []) {
+      const id = customGroupId(status);
+      if (!ordered.has(id)) {
+        ordered.set(id, {
+          id,
+          label: status.name,
+          leading: { kind: "custom", color: status.color },
+        });
+      }
     }
-    rows.push(ws);
+  }
+
+  const rowsById = new Map<string, SidebarWorkspaceEntry[]>();
+  for (const ws of workspaces) {
+    const effective = resolveEffectivePrStatus(ws, catalogs);
+    const id = effective.kind === "auto" ? effective.bucket : customGroupId(effective.status);
+    const rows = rowsById.get(id);
+    if (rows) rows.push(ws);
+    else rowsById.set(id, [ws]);
   }
 
   const groups: PrStatusGroup[] = [];
-
-  for (const bucket of PR_STATUS_BUCKET_ORDER) {
-    const rows = bucketRows.get(bucket);
+  for (const group of ordered.values()) {
+    const rows = rowsById.get(group.id);
     if (!rows || rows.length === 0) continue;
-
     rows.sort((a, b) => compareSidebarWorkspaceRows(a, b, projectNamesByViewKey));
-    groups.push({ bucket, label: getPrStatusBucketLabel(bucket, t), rows });
+    groups.push({ ...group, rows });
   }
-
   return groups;
 }

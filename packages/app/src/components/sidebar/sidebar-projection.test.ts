@@ -92,6 +92,7 @@ function projectionInput(options?: {
     pinnedCollapsed: options?.pinnedCollapsed ?? false,
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
+    statusCatalogs: {},
     t: i18n.t,
   };
 }

@@ -1209,6 +1209,14 @@ export const ptBR: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "Status",
+    automatic: "Automático",
+    errors: {
+      update: "Não foi possível atualizar o status",
+      load: "Não foi possível carregar os status",
+    },
+  },
   workspaceLabels: {
     title: "Etiquetas",
     unlabelled: "Sem etiqueta",

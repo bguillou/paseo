@@ -1194,6 +1194,11 @@ export const en = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "Status",
+    automatic: "Automatic",
+    errors: { update: "Unable to update status", load: "Unable to load statuses" },
+  },
   workspaceLabels: {
     title: "Labels",
     unlabelled: "Unlabelled",

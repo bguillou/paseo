@@ -1,4 +1,5 @@
 import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
+import type { WorkspaceStatusDefinition } from "@getpaseo/protocol/messages";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { SIDEBAR_UNLABELLED_LABEL_KEY, type SidebarLabelFilter } from "@/stores/sidebar-view-store";
 import type { StatusBucket, StatusGroup } from "@/hooks/sidebar-status-view-model";
@@ -8,7 +9,10 @@ export interface SidebarWorkspaceGroup {
   key: string;
   label: string;
   rows: SidebarWorkspaceEntry[];
-  leading: { kind: "status"; bucket: StatusBucket } | { kind: "pr_status"; bucket: PrStatusBucket };
+  leading:
+    | { kind: "status"; bucket: StatusBucket }
+    | { kind: "pr_status"; bucket: PrStatusBucket }
+    | { kind: "custom_status"; color: WorkspaceStatusDefinition["color"] };
 }
 
 export function statusWorkspaceGroups(groups: readonly StatusGroup[]): SidebarWorkspaceGroup[] {
@@ -24,10 +28,13 @@ export function prStatusWorkspaceGroups(groups: readonly PrStatusGroup[]): Sideb
   return groups.map((group) => ({
     // Prefixed so the shared collapse-state set never confuses a PR-status "done" with the agent
     // status mode's "done".
-    key: `pr_status:${group.bucket}`,
+    key: `pr_status:${group.id}`,
     label: group.label,
     rows: group.rows,
-    leading: { kind: "pr_status", bucket: group.bucket },
+    leading:
+      group.leading.kind === "auto"
+        ? { kind: "pr_status", bucket: group.leading.bucket }
+        : { kind: "custom_status", color: group.leading.color },
   }));
 }
 

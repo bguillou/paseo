@@ -1203,6 +1203,11 @@ export const ru: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "Статус",
+    automatic: "Автоматически",
+    errors: { update: "Не удалось обновить статус", load: "Не удалось загрузить статусы" },
+  },
   workspaceLabels: {
     title: "Метки",
     unlabelled: "Без метки",

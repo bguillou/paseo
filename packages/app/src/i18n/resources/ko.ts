@@ -1193,6 +1193,11 @@ export const ko: TranslationResources = {
       },
     },
   },
+  workspaceStatuses: {
+    title: "상태",
+    automatic: "자동",
+    errors: { update: "상태를 업데이트할 수 없습니다", load: "상태를 불러올 수 없습니다" },
+  },
   workspaceLabels: {
     title: "레이블",
     unlabelled: "레이블 없음",

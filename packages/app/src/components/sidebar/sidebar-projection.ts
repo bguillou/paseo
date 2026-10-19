@@ -11,6 +11,7 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
+import type { WorkspaceStatusCatalogs } from "@/workspace-statuses";
 import {
   resolveSidebarProjectIconTargets,
   type SidebarProjectIconTarget,
@@ -51,6 +52,7 @@ export interface SidebarProjectionInput {
   pinnedCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
+  statusCatalogs: WorkspaceStatusCatalogs;
   t: TFunction;
 }
 
@@ -111,7 +113,12 @@ function buildWorkspaceGroups(
       );
     case "pr_status":
       return prStatusWorkspaceGroups(
-        buildPrStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey, input.t),
+        buildPrStatusGroups(
+          unpinnedWorkspaces,
+          input.projectNamesByViewKey,
+          input.statusCatalogs,
+          input.t,
+        ),
       );
   }
 }
