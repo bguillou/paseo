@@ -6,6 +6,8 @@ import { MarkdownTextSpan } from "@/components/markdown-text";
 import { MarkdownLinkText } from "@/components/markdown/link-text";
 import { AssistantLinkPressProvider, type AssistantLinkPress } from "./link-press-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PlanStartMenu } from "@/components/plan-start-menu";
+import { isPlanFilePath } from "@/hooks/use-start-from-plan";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
 import { useAssistantFileLinkResolverContext } from "./provider";
@@ -33,7 +35,7 @@ export function AssistantMarkdownLink({
 }: AssistantMarkdownLinkProps) {
   const { target, onHoverIn, onPress } = useFileLink(source);
   const { configRef } = useAssistantFileLinkResolverContext();
-  const workspaceRoot = configRef.current.workspaceRoot;
+  const { serverId, workspaceId, workspaceRoot } = configRef.current;
   const tooltipPath = useMemo(
     () => (target ? formatFileLinkTooltipPath({ target, workspaceRoot }) : null),
     [target, workspaceRoot],
@@ -99,7 +101,23 @@ export function AssistantMarkdownLink({
     </a>
   );
 
-  return <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>;
+  const link = <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>;
+  if (!serverId || !target || !isPlanFilePath(target.path)) {
+    return link;
+  }
+  return (
+    <>
+      {link}
+      <View style={FILE_LINK_TOOLTIP_TRIGGER_STYLE}>
+        <PlanStartMenu
+          serverId={serverId}
+          workspaceId={workspaceId}
+          workspaceRoot={workspaceRoot ?? ""}
+          planPath={target.path}
+        />
+      </View>
+    </>
+  );
 }
 
 interface AssistantMarkdownCodeLinkProps {

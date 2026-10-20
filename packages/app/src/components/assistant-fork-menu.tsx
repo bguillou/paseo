@@ -14,8 +14,15 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 
 export type AssistantForkTarget = "tab" | "workspace";
 
+export interface AssistantForkMenuLabels {
+  trigger: string;
+  tab: string;
+  workspace: string;
+}
+
 interface AssistantForkMenuProps {
   onFork: (target: AssistantForkTarget) => Promise<void> | void;
+  labels?: AssistantForkMenuLabels;
   testID?: string;
 }
 
@@ -26,9 +33,11 @@ const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.for
 
 export const AssistantForkMenu = memo(function AssistantForkMenu({
   onFork,
+  labels,
   testID = "assistant-fork-menu",
 }: AssistantForkMenuProps) {
   const { t } = useTranslation();
+  const triggerLabel = labels?.trigger ?? t("message.actions.forkMenu");
   const [isOpen, setIsOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<AssistantForkTarget | null>(null);
   const isLocked = pendingTarget !== null;
@@ -63,10 +72,10 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
   const tooltipContent = useMemo(
     () => (
       <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{t("message.actions.forkMenu")}</Text>
+        <Text style={styles.tooltipText}>{triggerLabel}</Text>
       </TooltipContent>
     ),
-    [t],
+    [triggerLabel],
   );
 
   const forkIcon = useMemo(
@@ -80,7 +89,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
         <TooltipTrigger asChild>
           <View style={styles.triggerSlot} collapsable={false}>
             <DropdownMenuTrigger
-              accessibilityLabel={t("message.actions.forkMenu")}
+              accessibilityLabel={triggerLabel}
               accessibilityRole="button"
               disabled={isLocked}
               style={triggerStyle}
@@ -106,7 +115,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
           status={pendingTarget === "tab" ? "pending" : undefined}
           testID={`${testID}-new-tab`}
         >
-          {t("message.actions.forkInNewTab")}
+          {labels?.tab ?? t("message.actions.forkInNewTab")}
         </DropdownMenuItem>
         <DropdownMenuItem
           closeOnSelect={false}
@@ -116,7 +125,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
           status={pendingTarget === "workspace" ? "pending" : undefined}
           testID={`${testID}-new-workspace`}
         >
-          {t("message.actions.forkInNewWorkspace")}
+          {labels?.workspace ?? t("message.actions.forkInNewWorkspace")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

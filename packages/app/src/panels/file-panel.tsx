@@ -7,6 +7,8 @@ import { usePaneContext } from "@/panels/pane-context";
 import { definePanel } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { createMaterialFileIcon } from "@/components/material-file-icon";
+import { PlanStartMenu } from "@/components/plan-start-menu";
+import { isPlanFilePath } from "@/hooks/use-start-from-plan";
 
 const CENTERED_PADDED_STYLE = {
   flex: 1,
@@ -33,6 +35,19 @@ function FilePanel() {
   const { serverId, workspaceId, target, fileNavigationRevision } = usePaneContext();
   const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
+  const planPath = target.path;
+  const barAction = useMemo(
+    () =>
+      workspaceDirectory && isPlanFilePath(planPath) ? (
+        <PlanStartMenu
+          serverId={serverId}
+          workspaceId={workspaceId}
+          workspaceRoot={workspaceDirectory}
+          planPath={planPath}
+        />
+      ) : null,
+    [planPath, serverId, workspaceDirectory, workspaceId],
+  );
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
@@ -46,6 +61,7 @@ function FilePanel() {
       workspaceRoot={workspaceDirectory}
       location={target}
       navigationRevision={fileNavigationRevision ?? 0}
+      barAction={barAction}
     />
   );
 }
