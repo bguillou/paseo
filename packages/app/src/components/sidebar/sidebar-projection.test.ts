@@ -93,6 +93,7 @@ function projectionInput(options?: {
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
     statusCatalogs: {},
+    statusOrder: [],
     t: i18n.t,
   };
 }

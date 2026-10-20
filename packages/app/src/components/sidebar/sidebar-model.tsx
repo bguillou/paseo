@@ -18,6 +18,7 @@ import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
+import { useBoardColumnOrderStore } from "@/kanban/column-order-store";
 import { useWorkspaceStatusCatalogs } from "@/workspace-statuses";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
 import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
@@ -150,6 +151,7 @@ export function SidebarModelProvider({
   ]);
   const pinnedKeys = usePinnedSidebarKeys(filteredProjects);
   const statusCatalogs = useWorkspaceStatusCatalogs();
+  const statusOrder = useBoardColumnOrderStore((state) => state.columnOrder);
   const projectionInput = useMemo(
     () => ({
       projects: filteredProjects,
@@ -162,6 +164,7 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       collapsedWorkspaceGroupKeys,
       statusCatalogs,
+      statusOrder,
       t,
     }),
     [
@@ -175,6 +178,7 @@ export function SidebarModelProvider({
       pinnedWorkspaceOrder,
       filteredWorkspaceEntriesByKey,
       statusCatalogs,
+      statusOrder,
       t,
     ],
   );
