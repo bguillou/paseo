@@ -224,11 +224,13 @@ export function FilePane({
   workspaceRoot,
   location,
   navigationRevision,
+  barAction,
 }: {
   serverId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
   navigationRevision: number;
+  barAction?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
@@ -316,6 +318,7 @@ export function FilePane({
       location={location}
       navigationRevision={navigationRevision}
       imagePreviewUri={imagePreviewUri}
+      barAction={barAction}
     />
   );
 }
@@ -357,6 +360,7 @@ function FilePanePresentation({
   location,
   navigationRevision,
   imagePreviewUri,
+  barAction,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -378,6 +382,7 @@ function FilePanePresentation({
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  barAction?: React.ReactNode;
 }) {
   if (!client && readTarget) {
     return (
@@ -407,6 +412,7 @@ function FilePanePresentation({
         isMobile={isMobile}
         location={location}
         navigationRevision={navigationRevision}
+        barAction={barAction}
       />
     );
   }
@@ -439,6 +445,7 @@ function FilePanePresentation({
           lineCount={lineCount}
           mode={previewMode}
           onModeChange={onPreviewModeChange}
+          action={barAction}
         />
       ) : null}
       <FilePreviewBody
@@ -469,6 +476,7 @@ function EditableFilePane({
   isMobile,
   location,
   navigationRevision,
+  barAction,
 }: {
   client: DaemonClient;
   cwd: string;
@@ -484,6 +492,7 @@ function EditableFilePane({
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
+  barAction?: React.ReactNode;
 }) {
   const { settings } = useAppSettings();
   const { t } = useTranslation();
@@ -601,6 +610,7 @@ function EditableFilePane({
         conflict={conflict}
         mode={mode}
         onModeChange={onModeChange}
+        action={barAction}
       />
       {showSource ? (
         <FileEditorView
