@@ -10,6 +10,7 @@ import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
+import { orderBoardColumns } from "@/kanban/model";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
 import type { WorkspaceStatusCatalogs } from "@/workspace-statuses";
 import {
@@ -53,6 +54,8 @@ export interface SidebarProjectionInput {
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   statusCatalogs: WorkspaceStatusCatalogs;
+  /** The status group order the kanban and the status manager share. */
+  statusOrder: readonly string[];
   t: TFunction;
 }
 
@@ -113,11 +116,14 @@ function buildWorkspaceGroups(
       );
     case "pr_status":
       return prStatusWorkspaceGroups(
-        buildPrStatusGroups(
-          unpinnedWorkspaces,
-          input.projectNamesByViewKey,
-          input.statusCatalogs,
-          input.t,
+        orderBoardColumns(
+          buildPrStatusGroups(
+            unpinnedWorkspaces,
+            input.projectNamesByViewKey,
+            input.statusCatalogs,
+            input.t,
+          ),
+          input.statusOrder,
         ),
       );
   }

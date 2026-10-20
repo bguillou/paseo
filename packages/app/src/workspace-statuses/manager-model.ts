@@ -1,9 +1,19 @@
+import type { TFunction } from "i18next";
 import type { WorkspaceStatusDefinition } from "@getpaseo/protocol/messages";
 import {
   normalizeWorkspaceLabelName,
   WORKSPACE_LABEL_COLORS,
 } from "@getpaseo/protocol/workspace-labels";
+import {
+  buildAllPrStatusGroups,
+  customPrStatusGroupId,
+  getPrStatusBucketLabel,
+  PR_STATUS_BUCKET_ORDER,
+  type PrStatusGroupLeading,
+} from "@/hooks/sidebar-pr-status-view-model";
 import { i18n } from "@/i18n/i18next";
+import { orderBoardColumns } from "@/kanban/model";
+import type { WorkspaceStatusCatalogs } from "@/workspace-statuses";
 
 type StatusColor = WorkspaceStatusDefinition["color"];
 
@@ -38,6 +48,59 @@ export interface WorkspaceStatusManagerDependencies {
     color?: StatusColor;
   }) => Promise<unknown>;
   delete: (input: { serverId: string; id: string }) => Promise<unknown>;
+}
+
+/** A row of the manager's list. `id` is the status group id the sidebar and kanban order by. */
+export interface WorkspaceStatusManagerEntry {
+  id: string;
+  label: string;
+  leading: PrStatusGroupLeading;
+  /** The custom status behind the row; automatic statuses have none and cannot be edited. */
+  status: WorkspaceStatusDefinition | null;
+}
+
+/** The automatic statuses and one host's custom statuses, in the shared status order. */
+export function buildWorkspaceStatusManagerEntries(
+  statuses: readonly WorkspaceStatusDefinition[],
+  statusOrder: readonly string[],
+  t: TFunction,
+): WorkspaceStatusManagerEntry[] {
+  const entries: WorkspaceStatusManagerEntry[] = [
+    ...PR_STATUS_BUCKET_ORDER.map((bucket) => ({
+      id: bucket,
+      label: getPrStatusBucketLabel(bucket, t),
+      leading: { kind: "auto", bucket } as const,
+      status: null,
+    })),
+    ...statuses.map((status) => ({
+      id: customPrStatusGroupId(status),
+      label: status.name,
+      leading: { kind: "custom", color: status.color } as const,
+      status,
+    })),
+  ];
+  return orderBoardColumns(entries, statusOrder);
+}
+
+/**
+ * The full status order once `ids`, the rows one host's manager shows, take their new order.
+ * Statuses only other hosts have keep their place, so reordering one host never shuffles them.
+ */
+export function reorderWorkspaceStatuses(input: {
+  catalogs: WorkspaceStatusCatalogs;
+  statusOrder: readonly string[];
+  ids: readonly string[];
+  t: TFunction;
+}): string[] {
+  const allIds = orderBoardColumns(
+    buildAllPrStatusGroups([], new Map(), input.catalogs, input.t),
+    input.statusOrder,
+  ).map((group) => group.id);
+  const known = new Set(allIds);
+  const moved = input.ids.filter((id) => known.has(id));
+  const members = new Set(moved);
+  let next = 0;
+  return allIds.map((id) => (members.has(id) ? moved[next++] : id));
 }
 
 /** The colour a new status takes until you say otherwise. */

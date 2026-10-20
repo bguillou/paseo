@@ -6,9 +6,8 @@ import {
   useSyncExternalStore,
   type ReactElement,
 } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Pencil } from "lucide-react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceStatusDefinition } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -17,26 +16,29 @@ import { Button } from "@/components/ui/button";
 import type { FieldControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { isNative } from "@/constants/platform";
+import { moveBoardColumn } from "@/kanban/model";
+import { useBoardColumnOrderStore } from "@/kanban/column-order-store";
 import { useHosts } from "@/runtime/host-runtime";
-import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { WorkspaceLabelDot, WorkspaceLabelSwatchRow } from "@/workspace-labels/swatch";
-import { useWorkspaceStatuses, workspaceStatuses } from "@/workspace-statuses";
-import { WorkspaceStatusManagerModel, type WorkspaceStatusManagerDraft } from "./manager-model";
-
-/** The size the host pill's own glyphs use, so the row's trailing mark matches the controls above it. */
-const EDIT_ICON_SIZE = 14;
-
-/** Grows the pencil to a 44pt target without moving it off the trailing rail. */
-const EDIT_HIT_SLOP = (44 - EDIT_ICON_SIZE) / 2;
-
-const ThemedPencil = withUnistyles(Pencil);
-const mutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+import { WorkspaceLabelSwatchRow } from "@/workspace-labels/swatch";
+import {
+  useWorkspaceStatusCatalogs,
+  useWorkspaceStatuses,
+  workspaceStatuses,
+} from "@/workspace-statuses";
+import { WorkspaceStatusManagerList } from "./manager-list";
+import {
+  buildWorkspaceStatusManagerEntries,
+  reorderWorkspaceStatuses,
+  WorkspaceStatusManagerModel,
+  type WorkspaceStatusManagerDraft,
+} from "./manager-model";
+import type { WorkspaceStatusMoveDirection } from "./manager-row";
 
 /**
- * One host's custom statuses: the list, and a create/edit view reached the way the label manager
- * reaches its edit view, with the header's back arrow returning to the list.
+ * One host's statuses, automatic ones included, in the order the sidebar and kanban show them:
+ * the list, and a create/edit view reached the way the label manager reaches its edit view, with
+ * the header's back arrow returning to the list.
  */
 export function WorkspaceStatusManagerModal({
   visible,
@@ -48,6 +50,9 @@ export function WorkspaceStatusManagerModal({
   const { t } = useTranslation();
   const hosts = useHosts();
   const statusHosts = useWorkspaceStatuses((state) => state.hosts);
+  const catalogs = useWorkspaceStatusCatalogs();
+  const statusOrder = useBoardColumnOrderStore((state) => state.columnOrder);
+  const setStatusOrder = useBoardColumnOrderStore((state) => state.setColumnOrder);
   const [model] = useState(
     () =>
       new WorkspaceStatusManagerModel({
@@ -80,6 +85,25 @@ export function WorkspaceStatusManagerModal({
   const selectHost = useCallback((serverId: string) => model.selectHost(serverId), [model]);
   const startCreate = useCallback(() => model.startCreate(), [model]);
   const edit = useCallback((status: WorkspaceStatusDefinition) => model.edit(status), [model]);
+  const entries = useMemo(
+    () => buildWorkspaceStatusManagerEntries(state.statuses, statusOrder, t),
+    [state.statuses, statusOrder, t],
+  );
+  const reorder = useCallback(
+    (ids: string[]) => setStatusOrder(reorderWorkspaceStatuses({ catalogs, statusOrder, ids, t })),
+    [catalogs, setStatusOrder, statusOrder, t],
+  );
+  const move = useCallback(
+    (id: string, direction: WorkspaceStatusMoveDirection) =>
+      reorder(
+        moveBoardColumn(
+          entries.map((entry) => entry.id),
+          id,
+          direction === "up" ? "left" : "right",
+        ),
+      ),
+    [entries, reorder],
+  );
   const cancelEdit = useCallback(() => model.cancelEdit(), [model]);
   const setDraftName = useCallback((value: string) => model.setDraftName(value), [model]);
   const setDraftColor = useCallback(
@@ -186,19 +210,13 @@ export function WorkspaceStatusManagerModal({
               hostOptionTestID={managerHostOptionTestID}
             />
           ) : null}
-          <View style={styles.list}>
-            {state.statuses.map((status) => (
-              <WorkspaceStatusManagerRow
-                key={status.id}
-                status={status}
-                disabled={disabled}
-                onEdit={edit}
-              />
-            ))}
-            {state.statuses.length === 0 ? (
-              <Text style={styles.muted}>{t("workspaceStatuses.manage.empty")}</Text>
-            ) : null}
-          </View>
+          <WorkspaceStatusManagerList
+            entries={entries}
+            disabled={disabled}
+            onEdit={edit}
+            onMove={move}
+            onReorder={reorder}
+          />
           {state.host?.status === "offline" ? (
             <Text style={styles.muted}>{t("workspaceStatuses.manage.offline")}</Text>
           ) : null}
@@ -217,59 +235,6 @@ export function WorkspaceStatusManagerModal({
 }
 
 const managerHostOptionTestID = (serverId: string) => `workspace-status-manager-host-${serverId}`;
-
-/** Hover on the plain outer `View`, press on the inner `Pressable` — docs/hover.md. */
-function WorkspaceStatusManagerRow({
-  status,
-  disabled,
-  onEdit,
-}: {
-  status: WorkspaceStatusDefinition;
-  disabled: boolean;
-  onEdit: (status: WorkspaceStatusDefinition) => void;
-}): ReactElement {
-  const { t } = useTranslation();
-  const isCompact = useIsCompactFormFactor();
-  const [isHovered, setIsHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
-  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
-  const edit = useCallback(() => onEdit(status), [status, onEdit]);
-  const revealed = isHovered || isNative || isCompact;
-  const editStyle = useCallback(
-    ({ pressed }: PressableStateCallbackType) => [
-      styles.rowEdit,
-      !revealed && styles.rowEditHidden,
-      pressed && styles.rowEditPressed,
-    ],
-    [revealed],
-  );
-
-  return (
-    <View
-      style={styles.row}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      testID={`workspace-status-manager-status-${status.id}`}
-    >
-      <WorkspaceLabelDot color={status.color} />
-      <Text style={styles.rowName} numberOfLines={1}>
-        {status.name}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("workspaceStatuses.manage.editStatus", { name: status.name })}
-        disabled={disabled}
-        hitSlop={EDIT_HIT_SLOP}
-        onPress={edit}
-        pointerEvents={revealed ? "auto" : "none"}
-        style={editStyle}
-        testID={`workspace-status-manager-edit-${status.id}`}
-      >
-        <ThemedPencil size={EDIT_ICON_SIZE} uniProps={mutedMapping} />
-      </Pressable>
-    </View>
-  );
-}
 
 function WorkspaceStatusEditView({
   draft,
@@ -323,31 +288,6 @@ function WorkspaceStatusEditView({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  list: {
-    gap: theme.spacing[1],
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 32,
-  },
-  rowName: {
-    flex: 1,
-    minWidth: 0,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  rowEdit: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowEditHidden: {
-    opacity: 0,
-  },
-  rowEditPressed: {
-    opacity: 0.6,
-  },
   muted: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
